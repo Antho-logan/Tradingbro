@@ -1,0 +1,27 @@
+:root { --dialog-pop-duration: 190ms; }
+
+.tb-dialog-enter {
+  animation: tb-dialog-pop var(--dialog-pop-duration) cubic-bezier(.16,1,.3,1) both;
+}
+
+.tb-dialog-exit {
+  animation: tb-dialog-pop-out 150ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+@keyframes tb-dialog-pop {
+  0%   { opacity: 0; transform: translateY(8px) scale(.985); filter: blur(1.5px); }
+  100% { opacity: 1; transform: translateY(0)   scale(1);     filter: blur(0); }
+}
+
+@keyframes tb-dialog-pop-out {
+  0%   { opacity: 1; transform: translateY(0)   scale(1);   filter: blur(0); }
+  100% { opacity: 0; transform: translateY(6px) scale(.985); filter: blur(1px); }
+}
+
+/* Legacy support - keep for compatibility */
+.content[data-state="open"] {
+  animation: tb-dialog-pop var(--dialog-pop-duration) cubic-bezier(.16,1,.3,1) both;
+}
+.content[data-state="closed"] {
+  animation: tb-dialog-pop-out 150ms cubic-bezier(.2,.8,.2,1) both;
+}

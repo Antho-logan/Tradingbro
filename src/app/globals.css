@@ -1,26 +1,316 @@
-@import "tailwindcss";
+@reference "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ---- Terminal focus utilities ---- */
+@layer utilities {
+  /* remove default focus rings across the app, add subtle shadow when keyboard focusing */
+  .no-ring { outline: none !important; box-shadow: none !important; }
+  .no-ring:focus, .no-ring:focus-visible, .no-ring:focus-within {
+    outline: none !important;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.06) !important;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+}
+
+/* Theme tokens already set earlier; keep them. */
+@layer base {
+  * { @apply border-border; }
+  html, body { height: 100%; }
+  body {
+    @apply bg-background text-foreground antialiased font-mono;
+    font-feature-settings: "liga" 1, "calt" 1;
+  }
+}
+
+/* Numeric utilities for KPIs */
+@layer utilities {
+  .tnum { font-variant-numeric: tabular-nums; }
+  .lnum { font-variant-numeric: lining-nums; }
+}
+
+/* Optional: headings can be slightly tighter for mono */
+@layer base {
+  h1, h2, h3 { letter-spacing: -0.01em; }
+}
+
+/* ——— shadcn base tokens (neutral light/gray, no purple) ——— */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+
+  --primary: 222.2 47.4% 11.2%;           /* near-black buttons */
+  --primary-foreground: 210 40% 98%;
+
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+
+  --accent: 210 40% 96.1%;                /* neutral accents (no purple) */
+  --accent-foreground: 222.2 47.4% 11.2%;
+
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 222.2 84% 4.9%;
+
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+
+  --popover: 222.2 84% 4.9%;
+  --popover-foreground: 210 40% 98%;
+
+  --primary: 210 40% 98%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 212.7 26.8% 83.9%;
+}
+
+/* ——— tiny utilities we rely on across the app ——— */
+@layer utilities {
+  .card { @apply rounded-2xl border bg-card text-card-foreground shadow-sm; }
+  .chip { @apply inline-flex items-center rounded-full border px-2 py-0.5 text-xs text-muted-foreground; }
+  .terminal-grid {
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% 10%, rgba(0,0,0,0.04), transparent 55%),
+      linear-gradient(to bottom, rgba(0,0,0,0.02), transparent 120px);
+  }
+  .link-muted { @apply text-muted-foreground no-underline hover:text-foreground hover:underline decoration-dotted; }
+
+  /* Subtle gray "desk" shadows for light mode pages */
+  .page-bg {
+    @apply relative isolate;
+  }
+  .page-bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    /* Three soft gray blooms, very subtle */
+    background-image:
+      radial-gradient(70% 45% at 50% 0%, rgba(0,0,0,0.06), transparent 60%),
+      radial-gradient(45% 35% at 0% 25%, rgba(0,0,0,0.04), transparent 60%),
+      radial-gradient(45% 35% at 100% 25%, rgba(0,0,0,0.04), transparent 60%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%, 50% 60%, 50% 60%;
+    pointer-events: none;
+  }
+}
+
+/* ——— Quick Actions neutral link styling ——— */
+@layer components {
+  /* Neutral link styling only inside Quick Actions */
+  .quick-actions a {
+    @apply text-foreground no-underline visited:text-foreground;
+  }
+  .quick-actions a:hover {
+    @apply no-underline;
+  }
+  .quick-actions a:focus-visible {
+    @apply outline-none ring-2 ring-offset-2 ring-neutral-300;
+  }
+}
+
+/* ---- Link cleanup (no underlines/stripes), strong focus ---- */
+a { @apply no-underline; }
+a:hover { @apply no-underline; }
+a:focus-visible { @apply outline-none ring-2 ring-neutral-900/20 rounded-md; }
+
+/* Lock page scroll whenever any shadcn Dialog is open */
+html:has([role="dialog"][data-state="open"]) {
+  overflow: hidden;
+}
+
+/* Prevent any decorative pseudo elements creating "stripes" on Journal */
+.journal-shell::before,
+.journal-shell::after { content: none !important; }
+
+/* Ensure Journal header buttons are always clickable */
+.journal-shell .sticky {
+  position: relative;
+  z-index: 20;
+}
+
+.journal-shell .sticky button {
+  position: relative;
+  z-index: 21;
+  pointer-events: auto !important;
+}
+
+/* Remove any potential overlays that might block header clicks */
+.journal-shell > *:not(.sticky) {
+  position: relative;
+  z-index: 1;
+}
+
+/* If a closed dialog overlay lingers, it must not eat clicks */
+[data-radix-dialog-overlay][data-state="closed"] {
+  pointer-events: none !important;
+}
+
+/* Ensure no invisible elements block the header area */
+.journal-shell .sticky::before,
+.journal-shell .sticky::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Additional defensive rules for header button clickability */
+.journal-shell .sticky * {
+  pointer-events: auto;
+}
+
+.journal-shell .sticky button:hover,
+.journal-shell .sticky button:focus {
+  outline: 2px solid rgb(59 130 246 / 0.5);
+  outline-offset: 2px;
+}
+
+/* Remove any potential backdrop filters that might interfere */
+.journal-shell .sticky {
+  backdrop-filter: none !important;
+}
+
+/* Final defensive rule - ensure nothing can overlay the header */
+.journal-shell > :first-child {
+  position: relative;
+  z-index: 20 !important;
+}
+
+.journal-shell .sticky button {
+  position: relative !important;
+  z-index: 21 !important;
+  pointer-events: auto !important;
+  user-select: none !important;
+}
+
+/* --- Removes default blue focus ring for our auth buttons --- */
+.no-ring:focus,
+.no-ring:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Textareas in modals shouldn't be resizable (keeps layout tight) */
+textarea { resize: none; }
+
+/* Smooth base scrolling everywhere (nice feel on reload/navigate) */
+html { scroll-behavior: smooth; }
+
+/* Subtle, consistent scrollbars INSIDE the dialog only */
+.tb-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cfd6df #f7f8fa;
+}
+.tb-scroll::-webkit-scrollbar        { width: 8px; }
+.tb-scroll::-webkit-scrollbar-track  { background: #f7f8fa; border-radius: 9999px; }
+.tb-scroll::-webkit-scrollbar-thumb  { background: #cfd6df; border-radius: 9999px; }
+.tb-scroll::-webkit-scrollbar-thumb:hover { background: #b8c0ca; }
+
+
+/* Remove blue outline, keep a soft focus for keyboard users */
+.no-ring:focus { outline: none !important; }
+.no-ring:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.06);
+}
+
+/* Full-viewport soft spotlight so cards pop; light mode */
+.app-spotlight {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  /* gentle left/top glow fading to clear across the screen */
+  background:
+    radial-gradient(1200px 700px at -200px -100px, rgba(2, 6, 23, 0.06), transparent 60%),
+    radial-gradient(900px 600px at 80% -150px, rgba(2, 6, 23, 0.03), transparent 55%);
+}
+
+/* Enhanced dropdown animation for dialogs */
+@keyframes dropdown-appear {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-50%) translateY(-20px) scale(0.95);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateX(-50%) translateY(-50%) translateY(5px) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes dropdown-disappear {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-50%) translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-50%) translateY(-20px) scale(0.95);
+  }
+}
+
+.dialog-dropdown {
+  animation: dropdown-appear 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.dialog-dropdown[data-state="closed"] {
+  animation: dropdown-disappear 0.3s ease-in forwards;
 }

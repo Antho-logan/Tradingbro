@@ -1,17 +1,15 @@
-import TerminalWindow from "@/components/terminal/Window";
-import { TerminalChart } from "@/components/landing/TerminalChart";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { landingCopy } from "@/content/landing";
+import {
+  pain, promise, how, features, social, cta
+} from "./landing-copy";
 
 export const metadata = {
-  title: "TraderBro — Terminal-first AI trading coach",
-  description: "Upload a chart, get a plan, execute, and learn — in a tight coaching loop."
+  title: "TraderBro — AI trading coach that reads your charts",
+  description: "Stop guessing. Upload any chart screenshot. Get a clear plan with entry, exit, risk, and position size. Then journal it in one click."
 };
 
-export default function HomePage() {
-  const { hero, howItWorks, features, valueProps, footerCta } = landingCopy;
-
+export default function LandingPage() {
   return (
     <main className="max-w-6xl mx-auto px-6 lg:px-8">
       {/* === Hero ============================================= */}
@@ -51,15 +49,21 @@ export default function HomePage() {
           <div className="lg:mt-16 lg:translate-y-2">
             {/* Keep your existing terminal mock markup exactly as it is.
                 Only the wrapper classes above changed to lower it visually. */}
-            <TerminalWindow
-              variant="frameless"
-              showHeader={false}
-            >
-              <TerminalChart height={260} />
-            </TerminalWindow>
-            <p className="mt-3 text-xs text-muted-foreground font-mono">
-              {hero.terminalCaption}
-            </p>
+            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.45)]">
+              <div className="rounded-xl bg-neutral-900 p-3">
+                {/* Top bar */}
+                <div className="h-6 w-full rounded-md bg-neutral-800/70" />
+                {/* Chart area */}
+                <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900 p-3">
+                  <div className="aspect-[16/9] w-full rounded-lg bg-neutral-950" />
+                </div>
+                {/* Footer line */}
+                <div className="mt-3 h-4 w-2/3 rounded bg-neutral-800" />
+              </div>
+            </div>
+            <div className="mt-2 select-none font-mono text-[11px] text-neutral-400">
+              $ analyze_chart —symbol=BTCUSDT · signal detected · plan drafted · risks mapped
+            </div>
           </div>
         </div>
       </section>
@@ -94,10 +98,10 @@ export default function HomePage() {
 
       {/* HOW IT WORKS */}
       <section className="py-16">
-        <h2 className="text-2xl font-semibold">How it works</h2>
+        <h2 className="text-2xl font-semibold">{how.heading}</h2>
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-          {howItWorks.map((item) => (
-            <div key={item.title} className="rounded-2xl bg-white shadow-[0_10px_40px_-12px_rgba(0,0,0,0.15)] p-6">
+          {how.items.map((item, i) => (
+            <div key={i} className="rounded-2xl bg-white shadow-[0_10px_40px_-12px_rgba(0,0,0,0.15)] p-6">
               <div className="text-lg font-medium">{item.title}</div>
               <p className="mt-2 text-muted-foreground">{item.body}</p>
             </div>
@@ -107,10 +111,10 @@ export default function HomePage() {
 
       {/* WHAT YOU GET */}
       <section className="py-16">
-        <h2 className="text-2xl font-semibold">What you get</h2>
+        <h2 className="text-2xl font-semibold">{features.heading}</h2>
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map((f) => (
-            <div key={f.title} className="rounded-2xl bg-white shadow-[0_10px_40px_-12px_rgba(0,0,0,0.15)] p-6">
+          {features.items.map((f, i) => (
+            <div key={i} className="rounded-2xl bg-white shadow-[0_10px_40px_-12px_rgba(0,0,0,0.15)] p-6">
               <div className="text-base font-medium">{f.title}</div>
               <p className="mt-2 text-muted-foreground">{f.body}</p>
             </div>
@@ -131,9 +135,9 @@ export default function HomePage() {
       {/* SOCIAL PROOF */}
       <section className="py-16">
         <div className="rounded-2xl bg-neutral-900 text-neutral-200 p-8 text-center">
-          <div className="text-3xl font-bold">10,000+</div>
-          <div className="mt-2 text-lg">Traders using TraderBro</div>
-          <div className="mt-1 text-sm opacity-70">Join traders who've already stopped guessing</div>
+          <div className="text-3xl font-bold">{social.count}</div>
+          <div className="mt-2 text-lg">{social.label}</div>
+          <div className="mt-1 text-sm opacity-70">{social.heading}</div>
         </div>
       </section>
 
@@ -141,19 +145,23 @@ export default function HomePage() {
       <section className="py-16">
         <div className="rounded-2xl bg-white shadow-[0_10px_40px_-12px_rgba(0,0,0,0.15)] p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
-            <h3 className="text-xl font-semibold">{footerCta.title}</h3>
-            <p className="text-muted-foreground mt-2">{footerCta.subtitle}</p>
+            <h3 className="text-xl font-semibold">{cta.heading}</h3>
+            <p className="text-muted-foreground mt-2">{cta.sub}</p>
           </div>
           <div className="flex gap-3">
-            <Button
-              asChild
-              className="h-10 px-4 font-mono no-ring"
-            >
-              <Link href="/sign-up">Get Started</Link>
-            </Button>
+            {cta.ctas.map((c) => (
+              <Button
+                key={c.label}
+                asChild
+                variant={c.variant === 'default' ? 'default' : 'outline'}
+                className="h-10 px-4 font-mono no-ring"
+              >
+                <Link href={c.href}>{c.label}</Link>
+              </Button>
+            ))}
           </div>
         </div>
       </section>
     </main>
   );
-} 
+}

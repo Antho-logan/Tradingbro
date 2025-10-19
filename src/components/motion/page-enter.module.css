@@ -1,0 +1,10 @@
+.fallIn {
+  animation: fall-in 500ms cubic-bezier(.22,.61,.36,1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes fall-in {
+  0%   { opacity: 0; transform: translateY(-10px) scale(0.985); }
+  60%  { opacity: 1; transform: translateY(0px)   scale(1.002); }
+  100% { opacity: 1; transform: translateY(0px)   scale(1); }
+}
