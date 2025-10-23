@@ -24,11 +24,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       {/* mono default; keep sans var available */}
-      <body className={`${mono.variable} ${sans.variable} min-h-screen bg-background text-foreground font-mono`}>
-        <div className="relative">
-          <div className="app-spotlight" />
-          {children}
-        </div>
+      <body className={`${mono.variable} ${sans.variable} min-h-full bg-neutral-50 text-neutral-900 antialiased`}>
+        {children}
       </body>
     </html>
   );

@@ -268,17 +268,7 @@ html { scroll-behavior: smooth; }
   box-shadow: 0 0 0 2px rgba(0,0,0,0.06);
 }
 
-/* Full-viewport soft spotlight so cards pop; light mode */
-.app-spotlight {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  /* gentle left/top glow fading to clear across the screen */
-  background:
-    radial-gradient(1200px 700px at -200px -100px, rgba(2, 6, 23, 0.06), transparent 60%),
-    radial-gradient(900px 600px at 80% -150px, rgba(2, 6, 23, 0.03), transparent 55%);
-}
+/* Full-viewport soft spotlight removed - unified background now in layout */
 
 /* Enhanced dropdown animation for dialogs */
 @keyframes dropdown-appear {

@@ -32,7 +32,7 @@ export default function ChatPage() {
       setMessages((m) => [
         ...m,
         {
-          id: "analyzed",
+          id: `analyzed-${Date.now()}`,
           role: "assistant",
           content:
             "Got it. Do you want to **scalp** or **swing** this setup? Pick one so I tailor the plan.",
@@ -88,14 +88,14 @@ export default function ChatPage() {
   }
 
   return (
-    <main className={cn("bg-neutral-50 text-neutral-900 px-6 py-8 sm:px-8 sm:py-10")}>
+    <main className="mx-auto max-w-7xl px-6 lg:px-8 py-8">
       {/* HEADER: Back + Title */}
-      <div className="mx-auto mb-6 flex max-w-6xl items-center gap-3">
+      <div className="mb-6 flex items-center gap-3">
         {/* Back button: using unified button style */}
         <Button
+          variant="secondary"
           size="sm"
           asChild
-          className="no-ring"
         >
           <Link href="/dashboard">Back</Link>
         </Button>
@@ -104,10 +104,10 @@ export default function ChatPage() {
       </div>
 
       {/* GRID: chat left (wider), uploader right (narrower) */}
-      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[3fr_2fr]">
+      <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
         {/* LEFT: Chat panel */}
         <section className="flex flex-col">
-          <Card className="flex min-h-[620px] flex-1">
+          <Card className="flex min-h-[620px] flex-1 rounded-2xl p-5 md:p-6 bg-white shadow-[0_10px_35px_-18px_rgba(0,0,0,0.15)]">
             <ChatPanel
               messages={messages}
               onSend={handleSend}

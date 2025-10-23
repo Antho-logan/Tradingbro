@@ -79,125 +79,151 @@ export function NewEntryDialog({ open, onOpenChange, onCreate }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-2xl md:max-w-3xl rounded-2xl border border-neutral-200 bg-white shadow-[0_20px_60px_-20px_rgba(0,0,0,0.35)] p-5 sm:p-6 max-h-[78vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="font-mono text-lg">New Journal Entry</DialogTitle>
-          <DialogDescription className="text-sm">
+      <DialogContent className="max-h-[78vh] overflow-y-auto">
+        <DialogTitle className="sr-only">New Journal Entry</DialogTitle>
+        <div className="w-full max-w-3xl box-border overflow-hidden rounded-2xl bg-white p-5 shadow-xl">
+          <h3 className="font-mono text-[18px] font-semibold tracking-tight">
+            New Journal Entry
+          </h3>
+          <p className="mt-2 font-mono text-[12px] text-neutral-500">
             Log a trade with the key details.
-          </DialogDescription>
-        </DialogHeader>
+          </p>
 
-        <form ref={formRef} onSubmit={handleSubmit} className="mt-4 space-y-4 px-0">
-          {/* Row 1: Title and Symbol */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Title */}
-            <div className="max-w-sm space-y-2">
-              <Label htmlFor="title" className="mb-1 text-xs font-semibold text-neutral-600">Title</Label>
-              <Input
-                id="title"
-                name="title"
-                ref={titleRef}
-                placeholder="Breakout retest"
-                className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-mono no-ring"
-                required
-              />
-            </div>
+          <form ref={formRef} onSubmit={handleSubmit}>
+            <div className="space-y-4">
+              {/* Title + Symbol */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="min-w-0">
+                  <label className="block font-mono text-[12px] text-neutral-500 mb-1">Title</label>
+                  <input
+                    className="w-full h-10 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm focus:ring-2 focus:ring-neutral-800"
+                    name="title"
+                    placeholder="Breakout retest"
+                    ref={titleRef}
+                    required
+                  />
+                </div>
+                <div className="min-w-0">
+                  <label className="block font-mono text-[12px] text-neutral-500 mb-1">Symbol</label>
+                  <input
+                    className="w-full h-10 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm focus:ring-2 focus:ring-neutral-800"
+                    name="symbol"
+                    placeholder="BTC/USDT"
+                    required
+                  />
+                </div>
+              </div>
 
-            {/* Symbol */}
-            <div className="max-w-sm space-y-2">
-              <Label htmlFor="symbol" className="mb-1 text-xs font-semibold text-neutral-600">Symbol</Label>
-              <Input
-                id="symbol"
-                name="symbol"
-                placeholder="BTC/USDT"
-                className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-mono no-ring"
-                required
-              />
-            </div>
-          </div>
+              {/* Side / Style / Timeframe */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+                <div className="min-w-0">
+                  <label className="block font-mono text-[12px] text-neutral-500 mb-1">Side</label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={`inline-flex items-center justify-center h-8 px-3 rounded-lg border text-[12px] transition ${side === "long" ? "bg-neutral-900 text-white border-neutral-900" : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"}`}
+                      onClick={() => setSide("long")}
+                    >
+                      Long
+                    </button>
+                    <button
+                      type="button"
+                      className={`inline-flex items-center justify-center h-8 px-3 rounded-lg border text-[12px] transition ${side === "short" ? "bg-neutral-900 text-white border-neutral-900" : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"}`}
+                      onClick={() => setSide("short")}
+                    >
+                      Short
+                    </button>
+                  </div>
+                </div>
 
-          {/* Row 2: Side / Style / Timeframe */}
-          <div className="space-y-2 px-0">
-            <Label className="mb-1 text-xs font-semibold text-neutral-600">Trade Details</Label>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {/* Side */}
+                <div className="min-w-0">
+                  <label className="block font-mono text-[12px] text-neutral-500 mb-1">Style</label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={`inline-flex items-center justify-center h-8 px-3 rounded-lg border text-[12px] transition ${style === "swing" ? "bg-neutral-900 text-white border-neutral-900" : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"}`}
+                      onClick={() => setStyle("swing")}
+                    >
+                      Swing
+                    </button>
+                    <button
+                      type="button"
+                      className={`inline-flex items-center justify-center h-8 px-3 rounded-lg border text-[12px] transition ${style === "scalp" ? "bg-neutral-900 text-white border-neutral-900" : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"}`}
+                      onClick={() => setStyle("scalp")}
+                    >
+                      Scalp
+                    </button>
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <label className="block font-mono text-[12px] text-neutral-500 mb-1">Timeframe</label>
+                  <div className="relative">
+                    <select
+                      name="timeframe"
+                      value={timeframe}
+                      onChange={(e) => setTimeframe(e.target.value)}
+                      className="w-full h-10 rounded-lg border border-neutral-200 bg-neutral-50 px-3 pr-9 text-sm appearance-none focus:ring-2 focus:ring-neutral-800"
+                    >
+                      <option value="1m">1m</option>
+                      <option value="5m">5m</option>
+                      <option value="15m">15m</option>
+                      <option value="30m">30m</option>
+                      <option value="1h">1h</option>
+                      <option value="4h">4h</option>
+                      <option value="1d">1d</option>
+                      <option value="1w">1w</option>
+                      <option value="1M">1M</option>
+                    </select>
+                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-neutral-400">
+                      ▾
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Entry Price */}
               <div>
-                <Label className="mb-1 text-xs font-semibold text-neutral-600">Side</Label>
-                <SegmentedToggle
-                  name="side"
-                  value={side}
-                  onChange={(value) => setSide(value as "long" | "short")}
-                  options={[
-                    { value: "long", label: "Long" },
-                    { value: "short", label: "Short" },
-                  ]}
+                <label className="block font-mono text-[12px] text-neutral-500 mb-1">Entry Price</label>
+                <input
+                  className="w-full h-10 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm focus:ring-2 focus:ring-neutral-800"
+                  name="price"
+                  placeholder="42150.00"
+                  inputMode="decimal"
                 />
               </div>
 
-              {/* Style */}
+              {/* Notes */}
               <div>
-                <Label className="mb-1 text-xs font-semibold text-neutral-600">Style</Label>
-                <SegmentedToggle
-                  name="style"
-                  value={style}
-                  onChange={(value) => setStyle(value as "swing" | "scalp")}
-                  options={[
-                    { value: "swing", label: "Swing" },
-                    { value: "scalp", label: "Scalp" },
-                  ]}
+                <label className="block font-mono text-[12px] text-neutral-500 mb-1">Notes</label>
+                <textarea
+                  name="notes"
+                  placeholder="Setup, context, management…"
+                  className="w-full h-10 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm focus:ring-2 focus:ring-neutral-800 min-h-[120px] py-2"
                 />
               </div>
 
-              {/* Timeframe */}
-              <div>
-                <Label className="mb-1 text-xs font-semibold text-neutral-600">Timeframe</Label>
-                <TimeframeSelect
-                  value={timeframe}
-                  onChange={setTimeframe}
-                />
+              {/* Footer */}
+              <div className="flex justify-end gap-2">
+                <DialogClose asChild>
+                  <button
+                    type="button"
+                    className="h-9 px-3 rounded-lg border border-neutral-200 bg-white text-sm hover:bg-neutral-50"
+                    disabled={loading}
+                  >
+                    Cancel
+                  </button>
+                </DialogClose>
+                <button
+                  type="submit"
+                  className="h-9 px-3 rounded-lg bg-neutral-900 text-white text-sm hover:bg-neutral-800"
+                  disabled={loading}
+                >
+                  {loading ? "Saving…" : "Save Entry"}
+                </button>
               </div>
             </div>
-          </div>
-
-          {/* Row 3: Entry Price */}
-          <div className="max-w-sm space-y-2 px-0">
-            <Label htmlFor="price" className="mb-1 text-xs font-semibold text-neutral-600">Entry Price</Label>
-            <Input
-              id="price"
-              name="price"
-              type="number"
-              step="0.01"
-              placeholder="42150.00"
-              className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-mono no-ring"
-            />
-          </div>
-
-          {/* Row 4: Notes */}
-          <div className="space-y-2 px-0">
-            <Label htmlFor="notes" className="mb-1 text-xs font-semibold text-neutral-600">Notes</Label>
-            <Textarea
-              id="notes"
-              name="notes"
-              placeholder="Setup, context, management…"
-              className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-mono no-ring resize-none min-h-28"
-              rows={4}
-            />
-          </div>
-        </form>
-
-        <div className="mt-8 pt-4 border-t border-neutral-200/70 flex items-center justify-end gap-3">
-          <DialogClose asChild>
-            <Button variant="ghost" size="sm" className="font-mono no-ring" disabled={loading}>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            className="h-9 rounded-xl bg-neutral-900 px-4 text-white hover:bg-neutral-900/90 font-mono no-ring"
-            disabled={loading}
-            onClick={handleSubmit}
-          >
-            {loading ? "Saving…" : "Save Entry"}
-          </Button>
+          </form>
         </div>
       </DialogContent>
     </Dialog>

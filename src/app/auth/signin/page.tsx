@@ -20,10 +20,20 @@ const MOCK_PROVIDERS = [
 ];
 
 async function getProvidersWhenReal() {
-  const base = process.env.NEXTAUTH_URL || "http://localhost:3000";
-  const res = await fetch(`${base}/api/auth/providers`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return (await res.json()) as Record<string, { id: string; name: string }>;
+  try {
+    // Use the current port from the development server or default to 3003
+    const base = process.env.NEXTAUTH_URL || "http://localhost:3003";
+    const res = await fetch(`${base}/api/auth/providers`, {
+      cache: "no-store",
+      // Add timeout to prevent hanging
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Record<string, { id: string; name: string }>;
+  } catch (error) {
+    console.error("Failed to fetch auth providers:", error);
+    return null;
+  }
 }
 
 export default async function SignInPage() {

@@ -3,18 +3,39 @@ import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
 // import Facebook from "next-auth/providers/facebook"; // if you use it
 
-const authOptions = {
-  providers: [
+// Only include providers if credentials are available
+const providers = [];
+
+if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
+  providers.push(
     GitHub({
-      clientId: process.env.GITHUB_ID!,
-      clientSecret: process.env.GITHUB_SECRET!,
-    }),
+      clientId: process.env.GITHUB_ID,
+      clientSecret: process.env.GITHUB_SECRET,
+    })
+  );
+}
+
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  providers.push(
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-    // Facebook({ clientId: process.env.FACEBOOK_ID!, clientSecret: process.env.FACEBOOK_SECRET! }),
-  ],
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    })
+  );
+}
+
+// Add Facebook provider if credentials are available
+// if (process.env.FACEBOOK_ID && process.env.FACEBOOK_SECRET) {
+//   providers.push(
+//     Facebook({
+//       clientId: process.env.FACEBOOK_ID,
+//       clientSecret: process.env.FACEBOOK_SECRET!
+//     })
+//   );
+// }
+
+const authOptions = {
+  providers,
   pages: {
     signIn: "/auth/signin",
   },

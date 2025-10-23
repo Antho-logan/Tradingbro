@@ -63,13 +63,13 @@ export default function JournalPage() {
   }, [entries, query]);
 
   return (
-    <main className={cn("bg-neutral-50 text-neutral-900 px-6 py-8 sm:px-8 sm:py-10")}>
+    <main className="mx-auto max-w-7xl px-6 lg:px-8 py-8">
       {/* HEADER: Back + Title + New Entry */}
-      <div className="mx-auto mb-6 flex max-w-6xl items-center justify-between">
+      <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button
+            variant="secondary"
             size="sm"
-            className="no-ring"
             onClick={() => {
               console.log("Back button clicked");
               router.push("/dashboard");
@@ -81,8 +81,8 @@ export default function JournalPage() {
         </div>
         
         <Button
+          variant="primary"
           size="sm"
-          className="no-ring"
           onClick={() => setNewEntryOpen(true)}
         >
           New Entry
@@ -90,7 +90,7 @@ export default function JournalPage() {
       </div>
 
       {/* Search + Filters */}
-      <section className="mx-auto max-w-6xl mb-6">
+      <section className="mb-6">
         <div className="flex items-center gap-3">
           <Input
             value={query}
@@ -100,7 +100,7 @@ export default function JournalPage() {
           />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="no-ring" aria-label="Filters">
+              <Button variant="ghost" size="sm" aria-label="Filters">
                 <Filter className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -116,9 +116,9 @@ export default function JournalPage() {
       </section>
 
       {/* List */}
-      <section className="mx-auto max-w-6xl pb-12">
+      <section className="pb-12">
         {filtered.length === 0 ? (
-          <Card className="rounded-2xl border border-neutral-200 bg-white shadow-[0_10px_30px_-15px_rgba(0,0,0,0.15)]">
+          <Card className="rounded-2xl p-5 md:p-6 bg-white shadow-[0_10px_35px_-18px_rgba(0,0,0,0.15)]">
             <div className="p-10 text-center font-mono text-sm text-neutral-500">
               Journal entries will appear here…
             </div>

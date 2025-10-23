@@ -21,8 +21,8 @@ export default function DashboardPage() {
   const router = useRouter();
 
   return (
-    <main className="px-6 py-8 sm:px-8 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <main className="mx-auto max-w-7xl px-6 lg:px-8 py-8">
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
@@ -61,14 +61,14 @@ export default function DashboardPage() {
       {/* Performance */}
       <section className="space-y-6">
         <TerminalWindow title="trader@terminal — ~/equity">
-          <Card className="card">
+          <Card className="rounded-2xl p-5 md:p-6 bg-white shadow-[0_10px_35px_-18px_rgba(0,0,0,0.15)]">
             <CardHeader className="flex items-center justify-between">
               <CardTitle>Performance (demo)</CardTitle>
               <div className="flex items-center gap-2">
-                <Button className="no-ring" onClick={() => setShowPeek(true)}>
+                <Button variant="secondary" size="sm" onClick={() => setShowPeek(true)}>
                   Open Quick Peek
                 </Button>
-                <Button className="no-ring" asChild>
+                <Button variant="primary" size="sm" asChild>
                   <Link href="/reports">Details</Link>
                 </Button>
               </div>
@@ -83,11 +83,11 @@ export default function DashboardPage() {
         </TerminalWindow>
 
         {/* Recent Activity under chart */}
-        <Card className="card">
+        <Card className="rounded-2xl p-5 md:p-6 bg-white shadow-[0_10px_35px_-18px_rgba(0,0,0,0.15)]">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Recent Activity</CardTitle>
             <div className="flex items-center gap-2">
-              <Button className="no-ring" onClick={() => setOpenJournalQuick(true)}>
+              <Button variant="secondary" size="sm" onClick={() => setOpenJournalQuick(true)}>
                 View Journal
               </Button>
             </div>

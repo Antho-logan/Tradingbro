@@ -1,0 +1,17 @@
+{
+  "timeframes": {
+    "bias": ["2D","3D"],
+    "confirm_swing": ["12H","4H","1H"],
+    "confirm_scalp": ["1H","15m","5m"]
+  },
+  "poiPriority": ["untested_OB","HTF_OB","reclaimed_FVG","breaker_block","MB"],
+  "structure": { "requireSweep": true, "requireChoCh": true, "requireBos": true, "bosBodyMultipleMin": 1.5 },
+  "fvg": { "mode": "wick_to_wick", "allowRefined": true, "refinedFibs": [0.705,0.75,0.786,0.886] },
+  "modes": {
+    "swing": { "pdFilter": true, "riskPerTrade": 0.01, "targets": ["eq_or_0.5fib","opposite_swing_liquidity","opposite_htf_ob"] },
+    "scalp": { "riskPerTrade": 0.005, "targets": ["2R","nearest_internal_liquidity"] }
+  },
+  "macro": { "syncWithBTC": true, "blockAltLongsIfBTCBearBOS_1H_4H": true, "considerSPX_DXY": true },
+  "guardrails": { "maxAggRisk": 0.03, "dailyLossStopR": -3, "chopFilterDisplacementZ": 0.8, "poiTouchLimit": 1, "avoidFundingMinutes": 10 },
+  "management": { "tp1MoveSLtoBE": true, "trailHL_LH": true, "timeStopBars": 30, "exitOnInvalidationBOS": true }
+}
