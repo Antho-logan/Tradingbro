@@ -74,17 +74,7 @@ export default function ChatPage() {
   function handleSend(text: string) {
     if (!text.trim()) return;
     setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", content: text }]);
-    setTimeout(() => {
-      setMessages((m) => [
-        ...m,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content:
-            "Thanks — I'll use that to draft a plan: entry, invalidation, targets, and notes for your journal.",
-        },
-      ]);
-    }, 600);
+    // Remove canned response - real implementation would call API here
   }
 
   return (

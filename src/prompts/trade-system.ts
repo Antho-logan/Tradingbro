@@ -60,7 +60,6 @@ Rules:
 - Respect macro guardrails (BTC/SPX/DXY gates).
 - For scalp vs swing, align TF groups from edge.timeframes.
 
-Never say 'Thanks — I'll use that to draft a plan'. Only output JSON that validates against the schema.
 
 Return a single JSON object that conforms to the TradePlan schema. No prose.
 

@@ -56,48 +56,73 @@ Return ONLY valid JSON, no additional text.
 
 const VISION_USER_PREFIX = "Analyze this trading chart and extract the key technical features:";
 
-// OpenRouter vision caller
+// OpenRouter vision caller with fallback models
 async function callOpenRouterVL(imageB64: string): Promise<ChartFeatures> {
   const key = (process.env.OPENROUTER_API_KEY_VISION ?? process.env.OPENROUTER_API_KEY)!;
   const base = process.env.OPENROUTER_BASE ?? "https://openrouter.ai/api/v1";
-  const model = process.env.VISION_MODEL ?? process.env.OPENROUTER_VL_MODEL ?? "qwen/qwen2.5-vl-32b-instruct:free";
-
-  const res = await fetch(`${base}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${key}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": process.env.OPENROUTER_REFERER ?? "http://localhost:3000",
-      "X-Title": process.env.OPENROUTER_X_TITLE ?? "TraderBro – Vision",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      // don't force response_format on VL; some providers reject it
-      messages: [{
-        role: "user",
-        content: [
-          { type: "input_text", text: VISION_SYSTEM + "\n\n" + VISION_USER_PREFIX },
-          { type: "input_image", image_url: `data:image/png;base64,${imageB64}` }
-        ],
-      }],
-    }),
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`OpenRouter vision error ${res.status}: ${txt}`);
+  
+  // Try multiple models in order of preference
+  const models = [
+    process.env.OPENROUTER_VL_MODEL ?? "qwen/qwen2.5-vl-32b-instruct:free",
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.2-11b-vision-instruct:free"
+  ];
+  
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
+    
+    try {
+      const res = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.OPENROUTER_REFERER ?? "http://localhost:3000",
+          "X-Title": process.env.OPENROUTER_X_TITLE ?? "TraderBro - Vision",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          // don't force response_format on VL; some providers reject it
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: VISION_SYSTEM + "\n\n" + VISION_USER_PREFIX },
+              { type: "image_url", image_url: `data:image/png;base64,${imageB64}` }
+            ],
+          }],
+        }),
+      });
+      
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        if (i === models.length - 1) {
+          throw new Error(`All vision models failed. Last error: OpenRouter vision error ${res.status}: ${txt}`);
+        }
+        continue; // Try next model
+      }
+      
+      const data = await res.json();
+      const raw = data?.choices?.[0]?.message?.content ?? "{}";
+      console.log("[Vision] raw(300):", String(raw).slice(0, 300));
+      // Use coerceJSON for robust parsing
+      const parsed = typeof raw === "string" ? coerceJSON(raw) : raw;
+      if (!parsed || typeof parsed !== "object") {
+        console.warn("[Vision] Failed to parse JSON response, falling back to empty object");
+        return {};
+      }
+      return parsed;
+    } catch (error: any) {
+      if (i === models.length - 1) {
+        throw error;
+      }
+      continue; // Try next model
+    }
   }
-  const data = await res.json();
-  const raw = data?.choices?.[0]?.message?.content ?? "{}";
-  console.log("[Vision] raw(300):", String(raw).slice(0, 300));
-  // Use coerceJSON for robust parsing
-  const parsed = typeof raw === "string" ? coerceJSON(raw) : raw;
-  if (!parsed || typeof parsed !== "object") {
-    console.warn("[Vision] Failed to parse JSON response, falling back to empty object");
-    return {};
-  }
-  return parsed;
+  
+  // Should never reach here, but just in case
+  throw new Error("All vision models failed");
 }
 
 // Main vision extraction function

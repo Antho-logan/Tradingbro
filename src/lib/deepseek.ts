@@ -42,7 +42,7 @@ export async function callDeepSeekVisionToJSON(opts: { userPrompt: string }): Pr
     url = `${ENV.OPENROUTER_BASE}/chat/completions`;
     headers.Authorization = `Bearer ${key}`;
     headers["HTTP-Referer"] = headers["HTTP-Referer"] ?? "http://localhost:3000";
-    headers["X-Title"] = headers["X-Title"] ?? "TraderBro – Plan Generator";
+    headers["X-Title"] = headers["X-Title"] ?? "TraderBro - Plan Generator";
     model = ENV.DEEPSEEK_OR_MODEL; // e.g., deepseek/deepseek-r1
     body = {
       model,
