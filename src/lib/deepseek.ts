@@ -61,11 +61,12 @@ export async function callDeepSeekVisionToJSON(opts: { userPrompt: string }): Pr
       ],
       temperature: 0.2
     };
-  } else {
-    // Official DeepSeek API
+  } else if (provider === "deepseek") {
+    // Official DeepSeek API (more reliable)
     const key = ENV.DEEPSEEK_API_KEY;
-    if (!key) throw new Error("Missing DEEPSEEK_API_KEY (provider=official).");
+    if (!key) throw new Error("Missing DEEPSEEK_API_KEY (provider=deepseek).");
     headers.Authorization = `Bearer ${key}`;
+    url = ENV.DEEPSEEK_API_BASE || "https://api.deepseek.com/v1";
     body = {
       model,
       response_format: { type: "json_object" },
@@ -81,6 +82,8 @@ export async function callDeepSeekVisionToJSON(opts: { userPrompt: string }): Pr
       ],
       temperature: 0.2
     };
+  } else {
+    throw new Error(`Unsupported DEEPSEEK_PROVIDER: ${provider}`);
   }
 
   const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
@@ -89,7 +92,12 @@ export async function callDeepSeekVisionToJSON(opts: { userPrompt: string }): Pr
     throw new Error(`DeepSeek plan call failed ${res.status}: ${text}`);
   }
   const data = await res.json();
-  const raw = data?.choices?.[0]?.message?.content ?? "{}";
+  let raw = data?.choices?.[0]?.message?.content ?? "{}";
+  
+  // Handle case where OpenRouter returns array instead of object
+  if (Array.isArray(raw)) {
+    raw = raw[0] ?? "{}";
+  }
   
   if (process.env.DEBUG_AI === "1") {
     console.log("[ai] planner raw(300)→", raw.slice(0, 300));
@@ -178,6 +186,74 @@ export async function callDeepSeekVisionToJSON(opts: { userPrompt: string }): Pr
     })),
     warnings: validated.warnings
   } as unknown as TradePlan;
+}
+
+export async function callPlannerJSON(messages: any[], opts?: { max_tokens?: number }) {
+  const provider = ENV.DEEPSEEK_PROVIDER;
+  let url: string;
+  let headers: Record<string,string>;
+  let model: string;
+  let body: any;
+
+  if (provider === "openrouter") {
+    // Use OpenRouter for planner
+    const key = (ENV.OPENROUTER_API_KEY_REASONING ?? ENV.OPENROUTER_API_KEY);
+    if (!key) throw new Error("Missing OpenRouter key for reasoning (OPENROUTER_API_KEY_REASONING or OPENROUTER_API_KEY).");
+    url = `${ENV.OPENROUTER_BASE}/chat/completions`;
+    headers = {
+      Authorization: `Bearer ${key}`,
+      "HTTP-Referer": "http://localhost:3000",
+      "X-Title": "TraderBro - Plan Generator",
+      "Content-Type": "application/json"
+    };
+    model = ENV.DEEPSEEK_OR_MODEL || "deepseek/deepseek-r1";
+  } else if (provider === "deepseek") {
+    // Use DeepSeek direct API
+    const key = ENV.DEEPSEEK_API_KEY;
+    if (!key) throw new Error("Missing DEEPSEEK_API_KEY (provider=deepseek).");
+    url = `${ENV.DEEPSEEK_API_BASE}/chat/completions`;
+    headers = {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json"
+    };
+    model = ENV.DEEPSEEK_MODEL || "deepseek-r1";
+  } else {
+    throw new Error(`Unsupported DEEPSEEK_PROVIDER: ${provider}`);
+  }
+  
+  body = {
+    model,
+    messages,
+    temperature: 0.2,
+    max_tokens: opts?.max_tokens ?? 1200,
+    response_format: { type: "json_object" }
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body)
+  });
+  
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`DeepSeek planner call failed ${res.status}: ${text}`);
+  }
+  
+  const data = await res.json();
+  const raw = data?.choices?.[0]?.message?.content;
+  
+  if (!raw) {
+    throw new Error("No content returned from DeepSeek planner");
+  }
+  
+  // Use our tolerant parser
+  const parsed = coerceJSON(String(raw));
+  if (!parsed) {
+    throw new Error(`DeepSeek returned non-JSON. Raw head: ${String(raw).slice(0, 180)}…`);
+  }
+  
+  return parsed;
 }
 
 export async function fileToBase64(file: File): Promise<string> {

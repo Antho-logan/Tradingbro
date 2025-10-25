@@ -12,7 +12,7 @@ interface EnvSchema {
   OPENAI_API_KEY?: string;
   OPENAI_BASE: string;
   OPENAI_VISION_MODEL: string;
-  DEEPSEEK_PROVIDER: "official" | "openrouter";
+  DEEPSEEK_PROVIDER: "official" | "openrouter" | "deepseek";
   DEEPSEEK_API_KEY?: string;
   DEEPSEEK_API_BASE: string;
   DEEPSEEK_MODEL: string;

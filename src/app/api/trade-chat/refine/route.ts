@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callDeepSeekVisionToJSON } from "@/lib/deepseek";
+import { callPlannerJSON } from "@/lib/deepseek";
 import { TradePlan } from "@/types/trade";
 import { TradeChatResponse } from "@/types/api";
 import { ENV } from "@/lib/env";
-import { z } from "zod";
-import { tradePlanSchema } from "@/types/trade-io";
+import { buildTradeSystemPrompt } from "@/prompts/trade-system";
 
 export const runtime = "nodejs";
 
@@ -18,7 +17,20 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const previous: TradePlan = body?.previous;
-    const answers: Record<string, string> = body?.answers ?? {};
+    let answers: Record<string, string> = body?.answers ?? {};
+
+    // coerce repair-style fields if present
+    const a = { ...answers };
+    if (a.risk) a.risk_pct = a.risk;
+    if (a.tf && !a.timeframe) a.timeframe = a.tf;
+    if (a.symbol && !a.instrument) a.instrument = a.symbol;
+    
+    // normalize
+    if (a.risk_pct) a.risk_pct = String(a.risk_pct).replace("%","").trim();
+    if (a.timeframe) a.timeframe = String(a.timeframe).toUpperCase();
+    if (a.instrument) a.instrument = String(a.instrument).replace("/","").toUpperCase();
+    
+    answers = a;
 
     if (!previous) {
       return NextResponse.json({
@@ -28,92 +40,70 @@ export async function POST(req: NextRequest) {
       } as TradeChatResponse, { status: 400 });
     }
 
-    // Validate input with Zod
-    const validation = tradePlanSchema.safeParse({
-      meta: previous.meta || {},
-      questions: previous.clarifyingQuestions || [],
-      suggestions: previous.suggested || [],
-      warnings: previous.warnings || []
-    });
-    
-    if (!validation.success) {
-      console.error("[PLANNER] Previous plan validation failed:", validation.error);
-      return NextResponse.json({
-        status: "error",
-        error: "Invalid previous plan format",
-        debug: { ...debug, validationError: validation.error }
-      } as TradeChatResponse, { status: 400 });
+    // Derive TRUTHS from previous.meta or previous.features
+    const tf = (previous?.meta?.timeframe || (previous as any).features?.timeframe || "").toUpperCase();
+    const instrument = (previous?.meta?.instrument || (previous as any).features?.instrument || "").toUpperCase();
+
+    function tfToMinutes(tf: string) {
+      const m = tf.match(/^(\d+)([MHWD])$/i);
+      if (!m) return null;
+      const n = parseInt(m[1],10);
+      const u = m[2].toUpperCase();
+      return u === "M" ? n : u === "H" ? n*60 : u === "D" ? n*1440 : u === "W" ? n*10080 : null;
     }
+    const minutes = tfToMinutes(tf) ?? 60;
+    const mode = minutes <= 15 ? "scalp" : "swing";
 
     debug.answers = answers;
     debug.hasPreviousPlan = !!previous;
 
-    const userPrompt = `
-Refine the previous trade analysis using these answers.
-Only suggest entries if the full confirmation stack is satisfied; otherwise keep asking.
+    const plannerMessages = [
+      { role: "system", content: buildTradeSystemPrompt({ instrument, timeframe: tf, mode }) },
+      { role: "user", content: JSON.stringify({ 
+        truths: { instrument, timeframe: tf, mode }, 
+        previous, 
+        answers 
+      }) },
+    ];
 
-Context:
-{
-  "context": {
-    "meta": ${JSON.stringify(previous.meta || {})},
-    "features": ${JSON.stringify((previous as any).features ?? null)}
-  },
-  "clarifying_answers": ${JSON.stringify(answers)}
-}
-
-Return a single JSON object that matches the TradePlan schema. Do not output any prose.
-`;
-
-    const plan: TradePlan = await callDeepSeekVisionToJSON({
-      userPrompt
-      // No image on refine; we're clarifying logic.
-    });
+    const plan = await callPlannerJSON(plannerMessages, { max_tokens: 1200 });
 
     debug.rawOutput = JSON.stringify(plan).slice(0, 600);
     console.log("[PLANNER RAW]", JSON.stringify(plan).slice(0, 300));
     console.log("[PLANNER PARSED]", {
-      questions: plan.clarifyingQuestions?.length ?? 0,
-      suggestions: plan.suggested?.length ?? 0
+      questions: plan.questions?.length ?? 0,
+      suggestions: plan.suggestions?.length ?? 0
     });
 
-    // Validate the response with Zod
-    const planValidation = tradePlanSchema.safeParse({
+    // Convert from new schema to existing TradePlan format
+    const tradePlan = {
       meta: plan.meta || {},
-      questions: plan.clarifyingQuestions || [],
-      suggestions: plan.suggested || [],
+      clarifyingQuestions: plan.questions || [],
+      suggested: plan.suggestions?.map((s: any) => ({
+        name: `${s.side.toUpperCase()} Trade`,
+        direction: s.side,
+        entryZone: `${s.entry.zone[0]}-${s.entry.zone[1]}`,
+        stop: `${s.invalidation.price}`,
+        targets: s.targets.map((t: any) => ({ rr: t.rr || 1.0 })),
+        rationale: s.entry.rationale ? [s.entry.rationale] : [],
+        invalidations: s.invalidation.rationale ? [s.invalidation.rationale] : [],
+        expectedRR: s.targets?.[0]?.rr,
+        confidence: (plan.meta as any)?.confidence
+      })) || [],
       warnings: plan.warnings || []
-    });
-    
-    if (!planValidation.success) {
-      console.error("[PLANNER] Response validation failed:", planValidation.error);
-      return NextResponse.json({
-        status: "questions",
-        questions: [{
-          id: 'freeform',
-          text: 'I failed to parse; please try answering again with plain numbers/words.'
-        }],
-        suggestions: [],
-        debug
-      } as TradeChatResponse, { status: 200 });
-    }
-
-    console.log('[PLANNER PARSED]', {
-      questions: plan.clarifyingQuestions?.length ?? 0,
-      suggestions: plan.suggested?.length ?? 0
-    });
+    } as TradePlan;
 
     // Determine response type based on content
-    if (plan.clarifyingQuestions && plan.clarifyingQuestions.length > 0) {
+    if (tradePlan.clarifyingQuestions && tradePlan.clarifyingQuestions.length > 0) {
       return NextResponse.json({
         status: "questions",
-        questions: plan.clarifyingQuestions,
+        questions: tradePlan.clarifyingQuestions,
         debug
       } as TradeChatResponse);
-    } else if (plan.suggested && plan.suggested.length > 0) {
+    } else if (tradePlan.suggested && tradePlan.suggested.length > 0) {
       return NextResponse.json({
         status: "plan",
-        plan,
-        suggestions: plan.suggested,
+        plan: tradePlan,
         debug
       } as TradeChatResponse);
     } else {

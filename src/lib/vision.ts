@@ -22,10 +22,15 @@ export type ChartFeatures = {
 // System prompt for vision model
 const VISION_SYSTEM = `
 You are an expert technical analyst. Analyze the provided trading chart image and extract key features.
+
+Read all chart UI text: infer symbol/pair, exchange, timeframe label (e.g., 1D/4H/15m), and latest candle time if visible. Return these as fields: symbol, exchange, tf_label, latest_ts (ISO if possible). Also return SMC features if you can (sweep/CHoCH/BOS/OB/FVG etc).
+
 Return a structured JSON object with the following schema:
 {
-  "instrument": "e.g., BTC/USDT",
-  "timeframe": "e.g., 15m, 1H, 4H, 1D",
+  "symbol": "e.g., BTC/USDT",
+  "exchange": "e.g., Binance, Bybit",
+  "tf_label": "e.g., 15m, 1H, 4H, 1D",
+  "latest_ts": "ISO timestamp if visible",
   "trend": "up|down|sideways",
   "keyLevels": [
     {
@@ -57,54 +62,68 @@ Return ONLY valid JSON, no additional text.
 const VISION_USER_PREFIX = "Analyze this trading chart and extract the key technical features:";
 
 // OpenRouter vision caller with fallback models
-async function callOpenRouterVL(imageB64: string): Promise<ChartFeatures> {
+async function callOpenRouterVL({ dataUrl, prompt }: { dataUrl: string; prompt: string }): Promise<ChartFeatures> {
   const key = (process.env.OPENROUTER_API_KEY_VISION ?? process.env.OPENROUTER_API_KEY)!;
   const base = process.env.OPENROUTER_BASE ?? "https://openrouter.ai/api/v1";
   
-  // Try multiple models in order of preference
-  const models = [
-    process.env.OPENROUTER_VL_MODEL ?? "qwen/qwen2.5-vl-32b-instruct:free",
-    "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.2-11b-vision-instruct:free"
-  ];
+  // Build model list from environment with fallbacks
+  const primary = process.env.OPENROUTER_VL_MODEL ?? "qwen/qwen2.5-vl-32b-instruct:free";
+  const fallbacks = (process.env.OPENROUTER_VL_FALLBACKS ?? "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
   
-  for (let i = 0; i < models.length; i++) {
-    const model = models[i];
-    
+  const MODELS = [primary, ...fallbacks];
+  
+  const headers = {
+    Authorization: `Bearer ${key}`,
+    "HTTP-Referer": process.env.OPENROUTER_REFERER ?? "http://localhost:3000",
+    "X-Title": process.env.OPENROUTER_TITLE ?? "TraderBro (dev)",
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+
+  let lastErr: any = null;
+
+  for (const model of MODELS) {
     try {
-      const res = await fetch(`${base}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${key}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": process.env.OPENROUTER_REFERER ?? "http://localhost:3000",
-          "X-Title": process.env.OPENROUTER_X_TITLE ?? "TraderBro - Vision",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.2,
-          // don't force response_format on VL; some providers reject it
-          messages: [{
+      const body = {
+        model,
+        messages: [
+          { role: "system", content: prompt },
+          {
             role: "user",
             content: [
-              { type: "text", text: VISION_SYSTEM + "\n\n" + VISION_USER_PREFIX },
-              { type: "image_url", image_url: `data:image/png;base64,${imageB64}` }
+              { type: "input_text", text: "Analyze this trading chart image and return JSON only." },
+              { type: "input_image", image_url: dataUrl },
             ],
-          }],
-        }),
+          },
+        ],
+        temperature: 0.2,
+      };
+
+      const res = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
       });
-      
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        if (i === models.length - 1) {
-          throw new Error(`All vision models failed. Last error: OpenRouter vision error ${res.status}: ${txt}`);
+
+      // If this model is unavailable for our account/plan, skip to next
+      if (res.status === 404 || res.status === 422 || res.status === 429) {
+        lastErr = await res.text();
+        if (process.env.DEBUG_AI === "1") {
+          console.warn(`[VISION] ${model} skipped: ${res.status} ${lastErr}`);
         }
-        continue; // Try next model
+        continue;
       }
-      
-      const data = await res.json();
-      const raw = data?.choices?.[0]?.message?.content ?? "{}";
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`OpenRouter ${model} error ${res.status}: ${text}`);
+      }
+
+      const json = await res.json();
+      const raw = json?.choices?.[0]?.message?.content ?? "{}";
       console.log("[Vision] raw(300):", String(raw).slice(0, 300));
       // Use coerceJSON for robust parsing
       const parsed = typeof raw === "string" ? coerceJSON(raw) : raw;
@@ -113,16 +132,15 @@ async function callOpenRouterVL(imageB64: string): Promise<ChartFeatures> {
         return {};
       }
       return parsed;
-    } catch (error: any) {
-      if (i === models.length - 1) {
-        throw error;
+    } catch (e) {
+      lastErr = e;
+      if (process.env.DEBUG_AI === "1") {
+        console.warn(`[VISION] ${model} failed:`, e);
       }
-      continue; // Try next model
     }
   }
-  
-  // Should never reach here, but just in case
-  throw new Error("All vision models failed");
+
+  throw new Error(`All vision models failed. Last error: ${String(lastErr)}`);
 }
 
 // Main vision extraction function
@@ -131,7 +149,10 @@ export async function extractChartFeatures(imageBase64: string): Promise<ChartFe
   
   switch (provider) {
     case "openrouter":
-      return callOpenRouterVL(imageBase64);
+      return callOpenRouterVL({
+        dataUrl: `data:image/png;base64,${imageBase64}`,
+        prompt: VISION_SYSTEM + "\n\n" + VISION_USER_PREFIX
+      });
     default:
       throw new Error(`Unsupported vision provider: ${provider}`);
   }

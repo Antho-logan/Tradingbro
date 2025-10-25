@@ -42,8 +42,16 @@ CRITICAL RESPONSE RULES:
 - Arrays must be properly formatted JSON arrays
 `;
 
-export const TRADE_SYSTEM_PROMPT = `
+export function buildTradeSystemPrompt(truths: { instrument: string; timeframe: string; mode: string }) {
+  return `
 You are an SMC trading coach. Apply ONLY this edge. Never invent rules.
+
+TRUTHS (authoritative; do not contradict):
+- instrument: ${truths.instrument}
+- timeframe: ${truths.timeframe}
+- mode: ${truths.mode}  // computed from timeframe (<=15m = "scalp", else "swing")
+
+RULE: Treat TRUTHS as facts. Do not ask to confirm them unless missing.
 
 EDGE:
 ${JSON.stringify(edge)}
@@ -60,8 +68,14 @@ Rules:
 - Respect macro guardrails (BTC/SPX/DXY gates).
 - For scalp vs swing, align TF groups from edge.timeframes.
 
-
-Return a single JSON object that conforms to the TradePlan schema. No prose.
+Return a single JSON object that conforms to TradePlan schema. No prose.
 
 ${TRADE_JSON_SCHEMA}
 `;
+}
+
+export const TRADE_SYSTEM_PROMPT = buildTradeSystemPrompt({
+  instrument: "BTC/USDT",
+  timeframe: "15m", 
+  mode: "scalp"
+});

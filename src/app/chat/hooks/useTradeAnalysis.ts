@@ -103,6 +103,8 @@ export function useTradeAnalysis() {
     debug,
     analyze,
     refine,
-    reset
+    reset,
+    isAnalyzing: status === "analyzing",
+    isRefining: status === "refining"
   }), [status, plan, questions, error, debug, analyze, refine, reset]);
 }
