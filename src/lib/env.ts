@@ -17,6 +17,8 @@ interface EnvSchema {
   DEEPSEEK_API_BASE: string;
   DEEPSEEK_MODEL: string;
   DEEPSEEK_OR_MODEL: string;
+  VISION_TIMEOUT_MS: number;
+  PLANNER_TIMEOUT_MS: number;
 }
 
 const schema: EnvSchema = {
@@ -45,8 +47,12 @@ const schema: EnvSchema = {
   DEEPSEEK_PROVIDER: (process.env.DEEPSEEK_PROVIDER as any) ?? "openrouter",
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
   DEEPSEEK_API_BASE: process.env.DEEPSEEK_API_BASE ?? "https://api.deepseek.com/v1",
-  DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL ?? "deepseek-reasoner",
+  DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
   DEEPSEEK_OR_MODEL: process.env.DEEPSEEK_OR_MODEL ?? "deepseek/deepseek-r1",
+
+  // Timeouts in milliseconds
+  VISION_TIMEOUT_MS: parseInt(process.env.VISION_TIMEOUT_MS ?? "60000"),
+  PLANNER_TIMEOUT_MS: parseInt(process.env.PLANNER_TIMEOUT_MS ?? "90000"),
 };
 
 export const ENV = schema;

@@ -1,104 +1,141 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Q = { id: string; text: string; options?: string[] };
 
-export function ClarifyingForm({
+export default function ClarifyingForm({
   questions,
   onSubmit,
-  disabled,
-  loading = false
+  busy = false,                  // <-- NEW: parent-driven busy flag (optional)
+  onCancel,                      // <-- optional escape hatch
 }: {
   questions: Q[];
-  onSubmit: (answers: Record<string, string>) => Promise<void>;
-  disabled?: boolean;
-  loading?: boolean;
+  onSubmit: (answers: Record<string, string>) => Promise<void> | void;
+  busy?: boolean;
+  onCancel?: () => void;
 }) {
-  const [localAnswers, setLocalAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // --- NEW: reset answers when the questions change
+  const qSig = useMemo(() => JSON.stringify(questions?.map((q) => q.id) ?? []), [questions]);
+  useEffect(() => {
+    setAnswers({});
+    setSubmitting(false);
+  }, [qSig]);
 
-    // normal case: send each q.id -> value
-    let answers: Record<string, string> = {};
-    for (const q of questions) {
-      answers[q.id] = String(localAnswers[q.id] ?? "").trim();
+  useEffect(() => {
+    if (!busy) {
+      setSubmitting(false);
     }
+  }, [busy]);
 
-    // special case: fallback "repair" question -> parse into required keys
-    if (questions.length === 1 && questions[0].id === "repair") {
-      const txt = (localAnswers["repair"] || "").toLowerCase();
-      // very forgiving parsing
-      const risk = /(\d+(?:\.\d+)?)\s*%?/.exec(txt)?.[1] ?? "";
-      const tf   = /(1d|d|3d|2d|12h|4h|1h|30m|15m|5m|1m)\b/.exec(txt)?.[1] ?? "";
-      const inst = /(btc|eth|sol|link|[a-z]{2,6}\/?[a-z]{2,6})\b/.exec(txt)?.[0] ?? "";
+  const disabled = busy || submitting;
+  const canSubmit = useMemo(() => {
+    if (!questions?.length) return false;
+    const answered = questions.filter((q) => (answers[q.id] ?? "").toString().trim().length > 0).length;
+    return answered > 0;
+  }, [questions, answers]);
 
-      answers = {
-        risk_pct: risk,                     // e.g. "1"
-        timeframe: tf.toUpperCase(),        // e.g. "15M" or "1D"
-        instrument: inst.replace("/", "").toUpperCase() // "LINKUSDT"
-      };
+  const doSubmit = useCallback(async () => {
+    if (!canSubmit || busy || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit(answers);
+    } catch (err) {
+      console.error("[ClarifyingForm] submit failed", err);
+      setSubmitting(false);
     }
-
-    await onSubmit(answers); // <- calls useTradeAnalysis.refine(answers)
-  };
+  }, [answers, canSubmit, onSubmit, busy, submitting]);
 
   return (
-    <Card className="rounded-2xl border border-neutral-200/60 shadow-sm">
-      <CardContent className="p-4 space-y-4">
-        <div className="text-sm font-mono text-neutral-500">Clarifying questions</div>
-        <div className="space-y-3">
-          {questions.map((q) => (
-            <div key={q.id} className="grid grid-cols-1 gap-2">
-              <Label className="text-[12px] font-mono text-neutral-600">{q.text}</Label>
-              {q.options && q.options.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {q.options.map((opt) => {
-                    const selected = localAnswers[q.id] === opt;
-                    return (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => setLocalAnswers((a) => ({ ...a, [q.id]: opt }))}
-                        className={[
-                          "h-9 rounded-lg px-3 text-sm border",
-                          selected
-                            ? "bg-neutral-900 text-white border-neutral-900"
-                            : "bg-white text-neutral-800 border-neutral-200 hover:bg-neutral-50"
-                        ].join(" ")}
-                      >
-                        {opt}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <Input
-                  className="h-10"
-                  placeholder="Type answer…"
-                  value={localAnswers[q.id] ?? ""}
-                  onChange={(e) => setLocalAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-end">
-          <Button
-            className="h-10 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
-            onClick={handleSubmit}
-            disabled={disabled || loading}
+    <form
+      className="space-y-6"
+      onSubmit={(e) => { e.preventDefault(); void doSubmit(); }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          const tag = (e.target as HTMLElement)?.tagName;
+          if (tag === "INPUT" || tag === "TEXTAREA") {
+            e.preventDefault();
+            void doSubmit();
+          }
+        }
+        if (e.key === "Escape" && onCancel) onCancel();
+      }}
+      aria-busy={busy}
+    >
+      <div className="space-y-4">
+        {questions?.map((q) => (
+          <div key={q.id} className="space-y-2">
+            <div className="text-sm text-neutral-600">{q.text}</div>
+
+            {Array.isArray(q.options) && q.options.length ? (
+              <div className="flex flex-wrap gap-2">
+                {q.options.map((opt) => {
+                  const active = answers[q.id] === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => setAnswers((s) => ({ ...s, [q.id]: opt }))}
+                      className={[
+                        "h-9 rounded px-3 border",
+                        active
+                          ? "bg-neutral-900 text-white border-neutral-900"
+                          : "bg-white text-neutral-800 border-neutral-300",
+                        disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
+                      ].join(" ")}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <input
+                disabled={disabled}
+                className="h-10 w-full rounded border border-neutral-300 px-3 disabled:opacity-60"
+                placeholder="Type your answer and press Enter..."
+                value={answers[q.id] ?? ""}
+                onChange={(e) => setAnswers((s) => ({ ...s, [q.id]: e.target.value }))}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Footer: either button OR thinking loader */}
+      {!(busy || submitting) ? (
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={!canSubmit || disabled}
+            className="h-10 px-4 rounded bg-neutral-900 text-white disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {loading && <span className="animate-spin h-4 w-4 rounded-full border-2 border-white/60 border-t-transparent" />}
-            {loading ? "Submitting…" : "Submit answers"}
-          </Button>
+            Submit answers
+          </button>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="h-10 px-3 rounded border border-neutral-300 text-neutral-700"
+            >
+              Cancel
+            </button>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      ) : (
+        <div className="inline-flex items-center gap-2 text-neutral-700 select-none">
+          <span className="font-medium">TradingBro is thinking</span>
+          <span className="inline-flex -mb-[2px]">
+            <span className="mx-[2px] animate-bounce [animation-delay:-0.2s]">.</span>
+            <span className="mx-[2px] animate-bounce [animation-delay:-0.1s]">.</span>
+            <span className="mx-[2px] animate-bounce">.</span>
+          </span>
+        </div>
+      )}
+    </form>
   );
 }

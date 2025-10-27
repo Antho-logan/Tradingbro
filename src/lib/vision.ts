@@ -1,7 +1,95 @@
-import { coerceJSON } from "./openrouter";
+import { coerceJSON, openRouterChat } from "./openrouter";
 
 // Types for chart feature extraction
 export type ChartFeatures = {
+  symbol?: string;
+  exchange?: string;
+  timeframe_label?: string;
+  tf_minutes?: number;
+  mode_guess?: "scalp" | "swing" | null;
+  trend?: "up" | "down" | "range" | null;
+  swept_external?: boolean | null;
+  pois?: Array<{
+    type: string;
+    side?: string;
+    label?: string;
+    price?: number;
+  }>;
+  notes?: string;
+};
+
+// Server-side image compression utilities
+async function shrinkToJpegDataURL(dataUrl: string, options: { maxSide: number; quality: number }): Promise<string> {
+  // This would need Sharp implementation on server side
+  // For now, return the original dataUrl
+  return dataUrl;
+}
+
+const fallbackModels = (process.env.OPENROUTER_VL_MODELS || "")
+  .split(",").map(s => s.trim()).filter(Boolean);
+
+export async function extractChartFeatures(imageDataUrl: string, forceNextVisionModel = false) {
+  // shrink client-side already (you added this), but ensure server-side too:
+  const dataUrl = await shrinkToJpegDataURL(imageDataUrl, { maxSide: 1024, quality: 0.6 });
+
+  const messages = [
+    { role: "system", content: "Extract JSON features from the chart UI text + structure. Respond JSON only." },
+    { role: "user", content: [
+        { type: "input_text", text: "Read symbol, exchange, timeframe label, key levels, trend, obvious patterns." },
+        { type: "input_image", image_url: dataUrl }
+      ]
+    }
+  ];
+
+  let modelsToTry = [...fallbackModels];
+  
+  // If forceNextVisionModel is true, rotate the array
+  if (forceNextVisionModel && modelsToTry.length > 1) {
+    const first = modelsToTry.shift();
+    if (first) modelsToTry.push(first);
+  }
+
+  let lastErr: any = null;
+  for (const model of modelsToTry) {
+    try {
+      const startTime = Date.now();
+      const raw = await openRouterChat({
+        messages,
+        model,
+        kind: "vision",
+        temperature: 0.1,
+        maxTokens: 700,
+      });
+      const elapsed = Date.now() - startTime;
+      
+      if (process.env.DEBUG_AI === "1") {
+        console.log(`[VISION] Model: ${model}, Timeout: ${process.env.VISION_TIMEOUT_MS}ms, Elapsed: ${elapsed}ms, Forced: ${forceNextVisionModel}`);
+      }
+      
+      return coerceJSON(raw?.choices?.[0]?.message?.content ?? "{}");
+    } catch (e: any) {
+      lastErr = e;
+      const s = e?.status ?? 0;
+      if (s === 404 || s === 422 || s === 429 || (s >= 500 && s <= 504)) {
+        if (process.env.DEBUG_AI === "1") {
+          console.warn(`[VISION] ${model} failed with status ${s}, trying next model`);
+        }
+        continue; // try next VL model
+      }
+      if (e?.name === "AbortError") {
+        if (process.env.DEBUG_AI === "1") {
+          console.log(`[VISION] AbortError(timeout) for ${model}, timeoutMs: ${process.env.VISION_TIMEOUT_MS}`);
+        }
+        return { ok: false, reason: "timeout" };
+      }
+      throw e;
+    }
+  }
+  throw new Error(`All vision models failed. Last: ${String(lastErr)}`);
+}
+
+// Legacy exports for compatibility
+export type ChartFeaturesLegacy = {
   instrument?: string;
   timeframe?: string;
   trend?: "up" | "down" | "sideways";
@@ -21,48 +109,32 @@ export type ChartFeatures = {
 
 // System prompt for vision model
 const VISION_SYSTEM = `
-You are an expert technical analyst. Analyze the provided trading chart image and extract key features.
-
-Read all chart UI text: infer symbol/pair, exchange, timeframe label (e.g., 1D/4H/15m), and latest candle time if visible. Return these as fields: symbol, exchange, tf_label, latest_ts (ISO if possible). Also return SMC features if you can (sweep/CHoCH/BOS/OB/FVG etc).
-
-Return a structured JSON object with the following schema:
-{
-  "symbol": "e.g., BTC/USDT",
-  "exchange": "e.g., Binance, Bybit",
-  "tf_label": "e.g., 15m, 1H, 4H, 1D",
-  "latest_ts": "ISO timestamp if visible",
-  "trend": "up|down|sideways",
-  "keyLevels": [
-    {
-      "type": "support|resistance",
-      "price": number,
-      "strength": "weak|moderate|strong"
-    }
-  ],
-  "patterns": [
-    {
-      "type": "pattern name",
-      "direction": "bullish|bearish",
-      "confidence": 0-1
-    }
-  ],
-  "indicators": {
-    "rsi": number,
-    "macd": "bullish|bearish|neutral",
-    "volume": "increasing|decreasing|neutral"
-  },
-  "notes": ["array of important observations"]
-}
-
-Focus on price action, support/resistance levels, trend direction, and any visible patterns.
-Be precise with price levels if they are visible on the chart.
-Return ONLY valid JSON, no additional text.
+You read trading chart screenshots. Extract concrete, machine-usable facts only.
+- Read the symbol, exchange, and timeframe label from UI text (usually top-left).
+- Infer "mode_guess": "scalp" if timeframe <= 15m, otherwise "swing" if >= 1h; leave null if unclear.
+- Extract: trend (up/down/range), last_displacement_strength (weak/medium/strong),
+  obvious POIs (OB/FVG/BB/MB) with rough price/label if visible, and whether an external sweep just happened.
+Return *only* JSON.
 `;
 
-const VISION_USER_PREFIX = "Analyze this trading chart and extract the key technical features:";
+const VISION_USER = `
+Return JSON with this shape:
+{
+  "symbol": "BTCUSDT",
+  "exchange": "Binance",
+  "timeframe_label": "15m",
+  "tf_minutes": 15,
+  "mode_guess": "scalp" | "swing" | null,
+  "trend": "up" | "down" | "range" | null,
+  "swept_external": true | false | null,
+  "pois": [{"type":"OB","side":"bearish","label":"HTF OB","price": 64250}],
+  "notes": "short line about what you saw"
+}
+If a field is unknown, use null. JSON only.
+`;
 
-// OpenRouter vision caller with fallback models
-async function callOpenRouterVL({ dataUrl, prompt }: { dataUrl: string; prompt: string }): Promise<ChartFeatures> {
+// OpenRouter vision caller with fallback models (legacy)
+async function callOpenRouterVL({ dataUrl, prompt }: { dataUrl: string; prompt: string }): Promise<ChartFeaturesLegacy> {
   const key = (process.env.OPENROUTER_API_KEY_VISION ?? process.env.OPENROUTER_API_KEY)!;
   const base = process.env.OPENROUTER_BASE ?? "https://openrouter.ai/api/v1";
   
@@ -94,7 +166,7 @@ async function callOpenRouterVL({ dataUrl, prompt }: { dataUrl: string; prompt: 
           {
             role: "user",
             content: [
-              { type: "input_text", text: "Analyze this trading chart image and return JSON only." },
+              { type: "input_text", text: VISION_USER },
               { type: "input_image", image_url: dataUrl },
             ],
           },
@@ -143,15 +215,15 @@ async function callOpenRouterVL({ dataUrl, prompt }: { dataUrl: string; prompt: 
   throw new Error(`All vision models failed. Last error: ${String(lastErr)}`);
 }
 
-// Main vision extraction function
-export async function extractChartFeatures(imageBase64: string): Promise<ChartFeatures> {
+// Main vision extraction function (legacy)
+export async function extractChartFeaturesLegacy(imageBase64: string): Promise<ChartFeaturesLegacy> {
   const provider = process.env.VISION_PROVIDER ?? "openrouter";
   
   switch (provider) {
     case "openrouter":
       return callOpenRouterVL({
         dataUrl: `data:image/png;base64,${imageBase64}`,
-        prompt: VISION_SYSTEM + "\n\n" + VISION_USER_PREFIX
+        prompt: VISION_SYSTEM + "\n\n" + VISION_USER
       });
     default:
       throw new Error(`Unsupported vision provider: ${provider}`);

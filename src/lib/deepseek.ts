@@ -1,262 +1,320 @@
+// minimal client for DeepSeek direct with JSON-only responses
+import { tradePlanSchema } from "@/types/trade-io"; // your Zod schema
+import { coerceJSON, extractFirstJsonObject, textify } from "./safe-json";
+
+// Model alias mapping for DeepSeek compatibility
+const MODEL_ALIASES: Record<string, string> = {
+  "deepseek-v3.2-exp": "deepseek-reasoner",
+  "deepseek-v3.2": "deepseek-reasoner",
+  "deepseek-v3.1": "deepseek-v3",
+  "deepseek-v3-exp": "deepseek-v3",
+  "deepseek-r1": "deepseek-reasoner",
+  "deepseek/reasoner": "deepseek-reasoner",
+  "deepseek/chat": "deepseek-chat",
+};
+
+function normalizeModel(id: string | undefined) {
+  if (!id) return "deepseek-chat";
+  const k = id.trim().toLowerCase();
+  return MODEL_ALIASES[k] ?? id; // pass through if already valid
+}
+
+
 import { ENV } from "@/lib/env";
-import type { TradePlan } from "@/types/trade";
-import { TRADE_SYSTEM_PROMPT } from "@/prompts/trade-system";
-import { coerceJSON } from "@/lib/openrouter";
-import { tradePlanSchema, TradePlanIO } from "@/types/trade-io";
 
-function stripCodeFences(s: string) {
-  return s.replace(/```json\s*([\s\S]*?)```/gi, "$1").replace(/```\s*([\s\S]*?)```/gi, "$1");
+const DS_BASE = ENV.DEEPSEEK_API_BASE;
+const DS_MODEL = ENV.DEEPSEEK_MODEL;
+const DS_KEY = ENV.DEEPSEEK_API_KEY!;
+const PLANNER_TIMEOUT_MS = ENV.PLANNER_TIMEOUT_MS;
+
+function ensureJsonDirective(messages: Array<{ role: string; content: string }>) {
+  const hasJsonWord = messages.some((m) => /json/i.test(m.content));
+  if (!hasJsonWord) {
+    messages.unshift({
+      role: "system",
+      content:
+        "You must respond with a JSON object only (no prose, no markdown). " +
+        "This line intentionally includes word json to satisfy API.",
+    });
+  }
+  return messages.map((message) => ({
+    role: message.role,
+    content: textify(message.content),
+  }));
 }
 
-function extractFirstJsonObject<T = unknown>(raw: string): T {
-  // robustly find the first top-level {...} block
-  const s = stripCodeFences(raw);
-  const start = s.indexOf("{");
-  if (start < 0) throw new Error("No '{' found in model output.");
-  let level = 0;
-  for (let i = start; i < s.length; i++) {
-    const ch = s[i];
-    if (ch === "{") level++;
-    else if (ch === "}") {
-      level--;
-      if (level === 0) {
-        const candidate = s.slice(start, i + 1);
-        return JSON.parse(candidate) as T;
-      }
+export async function planTrade(messages: Array<{role: string; content: string}>) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), PLANNER_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${DS_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${DS_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: DS_MODEL,            // 'deepseek-reasoner' or 'deepseek-chat'
+        messages,
+        response_format: { type: "json_object" },
+        max_tokens: 1400,
+        temperature: 0.2,
+      }),
+      signal: ac.signal,
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`DeepSeek ${res.status}: ${txt.slice(0,300)}`);
     }
+    const json = await res.json();
+    return coerceJSON(json?.choices?.[0]?.message?.content ?? "{}");
+  } finally {
+    clearTimeout(t);
   }
-  throw new Error("Could not find a balanced JSON object in model output.");
 }
 
-export async function callDeepSeekVisionToJSON(opts: { userPrompt: string }): Promise<TradePlan> {
-  const provider = ENV.DEEPSEEK_PROVIDER;
-  let url = ENV.DEEPSEEK_API_BASE;
-  let headers: Record<string,string> = { "Content-Type": "application/json" };
-  let model = ENV.DEEPSEEK_MODEL;
-  let body: any;
-
-  if (provider === "openrouter") {
-    // Use OpenRouter with DeepSeek R1 (reasoning) model
-    const key = (ENV.OPENROUTER_API_KEY_REASONING ?? ENV.OPENROUTER_API_KEY);
-    if (!key) throw new Error("Missing OpenRouter key for reasoning (OPENROUTER_API_KEY_REASONING or OPENROUTER_API_KEY).");
-    url = `${ENV.OPENROUTER_BASE}/chat/completions`;
-    headers.Authorization = `Bearer ${key}`;
-    headers["HTTP-Referer"] = headers["HTTP-Referer"] ?? "http://localhost:3000";
-    headers["X-Title"] = headers["X-Title"] ?? "TraderBro - Plan Generator";
-    model = ENV.DEEPSEEK_OR_MODEL; // e.g., deepseek/deepseek-r1
-    body = {
-      model,
-      max_tokens: 1200,
-      // Keep response_format if model supports it; otherwise rely on coerceJSON
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: TRADE_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content:
-            `${opts.userPrompt}\n\n` +
-            `Return ONLY a valid JSON object that conforms to the schema. ` +
-            `Do not add any explanation or markdown fences. No prose.`
-        }
-      ],
-      temperature: 0.2
-    };
-  } else if (provider === "deepseek") {
-    // Official DeepSeek API (more reliable)
-    const key = ENV.DEEPSEEK_API_KEY;
-    if (!key) throw new Error("Missing DEEPSEEK_API_KEY (provider=deepseek).");
-    headers.Authorization = `Bearer ${key}`;
-    url = ENV.DEEPSEEK_API_BASE || "https://api.deepseek.com/v1";
-    body = {
-      model,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: TRADE_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content:
-            `${opts.userPrompt}\n\n` +
-            `Return ONLY a valid JSON object that conforms to the schema. ` +
-            `Do not add any explanation or markdown fences. No prose.`
-        }
-      ],
-      temperature: 0.2
-    };
-  } else {
-    throw new Error(`Unsupported DEEPSEEK_PROVIDER: ${provider}`);
-  }
-
-  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`DeepSeek plan call failed ${res.status}: ${text}`);
-  }
-  const data = await res.json();
-  let raw = data?.choices?.[0]?.message?.content ?? "{}";
+export async function callPlannerJSON(
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+  opts?: { max_tokens?: number; traceId?: string },
+) {
+  const startTime = Date.now();
+  const normalizedModel = normalizeModel(DS_MODEL);
+  const traceId = opts?.traceId ?? `planner_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   
-  // Handle case where OpenRouter returns array instead of object
-  if (Array.isArray(raw)) {
-    raw = raw[0] ?? "{}";
-  }
+  // Ensure JSON directive is present
+  const safeMessages = ensureJsonDirective([...messages]);
   
   if (process.env.DEBUG_AI === "1") {
-    console.log("[ai] planner raw(300)→", raw.slice(0, 300));
+    console.log(`[PLANNER] ${traceId} start`, {
+      model: normalizedModel,
+      timeout: PLANNER_TIMEOUT_MS,
+      messageCount: safeMessages.length,
+    });
   }
-  
-  // First attempt: use coerceJSON for robust parsing
-  let parsed = coerceJSON(String(raw));
-  
-  if (!parsed) {
-    // Second attempt: try to extract the first well-formed object
-    try {
-      parsed = extractFirstJsonObject(String(raw));
-    } catch (e2: any) {
-      // Third attempt: repair pass
-      if (process.env.DEBUG_AI === "1") {
-        console.log("[ai] JSON parsing failed, attempting repair pass");
-      }
-      
-      try {
-        const repairRes = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            ...body,
-            messages: [
-              ...body.messages,
-              {
-                role: "user",
-                content: `The previous output was not valid JSON. Please convert it to valid JSON matching the schema. Original output:\n${raw}`
-              }
-            ]
-          })
-        });
-        
-        if (repairRes.ok) {
-          const repairData = await repairRes.json();
-          const repairRaw = repairData?.choices?.[0]?.message?.content ?? "{}";
-          parsed = coerceJSON(String(repairRaw));
-        }
-      } catch (repairError: any) {
-        if (process.env.DEBUG_AI === "1") {
-          console.log("[ai] Repair pass failed:", repairError?.message);
-        }
-      }
-      
-      if (!parsed) {
-        throw new Error(`DeepSeek returned non-JSON. Raw head: ${String(raw).slice(0, 180)}…`);
-      }
-    }
-  }
-  
-  // Validate with Zod schema
-  const validation = tradePlanSchema.safeParse(parsed);
-  if (!validation.success) {
-    if (process.env.DEBUG_AI === "1") {
-      console.log("[ai] Schema validation failed:", validation.error);
-    }
-    
-    // Return a single clarifying question instead of empty arrays
-    return {
-      meta: {},
-      clarifyingQuestions: [{
-        id: "repair",
-        text: "I couldn't parse your last answers. Please reply with numeric risk %, instrument and timeframe."
-      }],
-      suggested: [],
-      warnings: []
-    } as unknown as TradePlan;
-  }
-  
-  // Convert from new schema to existing TradePlan format
-  const validated = validation.data;
-  return {
-    meta: validated.meta,
-    clarifyingQuestions: validated.questions,
-    suggested: validated.suggestions.map(s => ({
-      name: `${s.side.toUpperCase()} Trade`,
-      direction: s.side,
-      entryZone: `${s.entry.zone[0]}-${s.entry.zone[1]}`,
-      stop: `${s.invalidation.price}`,
-      targets: s.targets.map(t => ({ rr: t.rr || 1.0 })),
-      rationale: s.entry.rationale ? [s.entry.rationale] : [],
-      invalidations: s.invalidation.rationale ? [s.invalidation.rationale] : [],
-      expectedRR: s.targets[0]?.rr,
-      confidence: validated.meta?.confidence
-    })),
-    warnings: validated.warnings
-  } as unknown as TradePlan;
-}
 
-export async function callPlannerJSON(messages: any[], opts?: { max_tokens?: number }) {
-  const provider = ENV.DEEPSEEK_PROVIDER;
-  let url: string;
-  let headers: Record<string,string>;
-  let model: string;
-  let body: any;
-
-  if (provider === "openrouter") {
-    // Use OpenRouter for planner
-    const key = (ENV.OPENROUTER_API_KEY_REASONING ?? ENV.OPENROUTER_API_KEY);
-    if (!key) throw new Error("Missing OpenRouter key for reasoning (OPENROUTER_API_KEY_REASONING or OPENROUTER_API_KEY).");
-    url = `${ENV.OPENROUTER_BASE}/chat/completions`;
-    headers = {
-      Authorization: `Bearer ${key}`,
-      "HTTP-Referer": "http://localhost:3000",
-      "X-Title": "TraderBro - Plan Generator",
-      "Content-Type": "application/json"
-    };
-    model = ENV.DEEPSEEK_OR_MODEL || "deepseek/deepseek-r1";
-  } else if (provider === "deepseek") {
-    // Use DeepSeek direct API
-    const key = ENV.DEEPSEEK_API_KEY;
-    if (!key) throw new Error("Missing DEEPSEEK_API_KEY (provider=deepseek).");
-    url = `${ENV.DEEPSEEK_API_BASE}/chat/completions`;
-    headers = {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json"
-    };
-    model = ENV.DEEPSEEK_MODEL || "deepseek-r1";
-  } else {
-    throw new Error(`Unsupported DEEPSEEK_PROVIDER: ${provider}`);
-  }
-  
-  body = {
-    model,
-    messages,
+  const body = {
+    model: normalizedModel,
     temperature: 0.2,
-    max_tokens: opts?.max_tokens ?? 1200,
-    response_format: { type: "json_object" }
+    max_tokens: opts?.max_tokens || 1400,
+    messages: safeMessages,
+    response_format: { type: "json_object" },
   };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body)
-  });
-  
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`DeepSeek planner call failed ${res.status}: ${text}`);
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), PLANNER_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${DS_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${DS_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: ac.signal,
+    });
+
+    if (!res.ok) {
+      // try to extract server error
+      let detail = "";
+      try {
+        const raw = await res.text();
+        detail = JSON.parse(raw)?.error?.message || raw;
+      } catch {
+        detail = await res.text();
+      }
+
+      // Auto-retry for JSON directive error
+      if (res.status === 400 && /word 'json'/.test(detail) && !/RETRIED_JSON/.test(JSON.stringify(safeMessages))) {
+        if (process.env.DEBUG_AI === "1") {
+          console.warn(`[PLANNER] JSON directive missing, retrying with forced directive`);
+        }
+        const retried = ensureJsonDirective([...safeMessages, { role: "system", content: "RETRIED_JSON" }]);
+        const r2 = await fetch(`${DS_BASE}/chat/completions`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${DS_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, messages: retried }),
+          signal: AbortSignal.timeout(PLANNER_TIMEOUT_MS),
+        });
+        const raw2 = await r2.text();
+        if (!r2.ok) throw new Error(`DeepSeek retry error ${r2.status}: ${raw2}`);
+        return parsePlannerJSON(raw2);
+      }
+
+      // If model id is wrong or not available, try a fallback once:
+      if (res.status === 400 && /model/i.test(detail) && /not/i.test(detail)) {
+        const fallback = "deepseek-chat";
+        if (process.env.DEBUG_AI === "1") {
+          console.warn(`[PLANNER] Model "${normalizedModel}" invalid, retrying with "${fallback}"`);
+        }
+        const r2 = await fetch(`${DS_BASE}/chat/completions`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${DS_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, model: fallback }),
+          signal: AbortSignal.timeout(PLANNER_TIMEOUT_MS),
+        });
+        const raw2 = await r2.text();
+        if (!r2.ok) throw new Error(`DeepSeek fallback error ${r2.status}: ${raw2}`);
+        return parsePlannerJSON(raw2);
+      }
+
+      throw new Error(`DeepSeek planner error ${res.status}: ${detail}`);
+    }
+
+    const raw = await res.text();
+    const elapsed = Date.now() - startTime;
+    
+    if (process.env.DEBUG_AI === "1") {
+      console.log(`[PLANNER] ${traceId} end`, { elapsed, ok: true, snippet: raw.slice(0, 200) });
+    }
+    
+    return parsePlannerJSON(raw);
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === "AbortError") {
+      if (process.env.DEBUG_AI === "1") {
+        console.log(`[PLANNER] ${traceId} timeout`, { timeoutMs: PLANNER_TIMEOUT_MS });
+      }
+      throw new Error(`Planner timed out after ${PLANNER_TIMEOUT_MS}ms`);
+    }
+    if (process.env.DEBUG_AI === "1") {
+      console.log(`[PLANNER] ${traceId} error`, e);
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
   }
-  
-  const data = await res.json();
-  const raw = data?.choices?.[0]?.message?.content;
-  
-  if (!raw) {
-    throw new Error("No content returned from DeepSeek planner");
+}
+
+// helper used above (place near bottom)
+function parsePlannerJSON(raw: string) {
+  if (process.env.DEBUG_AI === "1") console.log("[PLANNER RAW]", raw);
+  let content = "";
+  try {
+    content = JSON.parse(raw)?.choices?.[0]?.message?.content ?? "";
+  } catch {
+    content = "";
   }
-  
-  // Use our tolerant parser
-  const parsed = coerceJSON(String(raw));
-  if (!parsed) {
-    throw new Error(`DeepSeek returned non-JSON. Raw head: ${String(raw).slice(0, 180)}…`);
+  const parsed = coerceJSON(content) || extractFirstJsonObject(raw) || {};
+  if (process.env.DEBUG_AI === "1") console.log("[PLANNER PARSED]", parsed);
+  const safe = tradePlanSchema.safeParse(parsed);
+  if (!safe.success) {
+    if (process.env.DEBUG_AI === "1") console.warn("[PLANNER ZOD ERR]", safe.error.flatten());
+    return {
+      meta: { mode: "unknown", confidence: 0.2 },
+      questions: [{ id:"repair", text:"I need risk %, instrument, and timeframe (e.g., 1, BTCUSDT, 15m)." }],
+      suggestions: [],
+      warnings: ["Schema validation failed; asked for minimal clarifiers."],
+    };
   }
-  
-  return parsed;
+  return safe.data;
 }
 
 export async function fileToBase64(file: File): Promise<string> {
   const buf = Buffer.from(await file.arrayBuffer());
   return buf.toString("base64");
+}
+
+// Simple ping function for health checks - returns raw response
+export async function pingPlanner() {
+  const startTime = Date.now();
+  const normalizedModel = normalizeModel(DS_MODEL);
+  
+  if (process.env.DEBUG_AI === "1") {
+    console.log(`[PLANNER PING] Model: ${normalizedModel}, Timeout: ${PLANNER_TIMEOUT_MS}ms`);
+  }
+
+  const body = {
+    model: normalizedModel,
+    temperature: 0.1,
+    max_tokens: 50,
+    messages: [
+      { role: "system", content: "Return a single JSON object only. You are a helpful assistant designed to output JSON. Reply with JSON object ONLY." },
+      { role: "user", content: 'Respond with {"ping":"planner_ok"} only.' }
+    ],
+    response_format: { type: "json_object" },
+  };
+
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), PLANNER_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${DS_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${DS_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: ac.signal,
+    });
+
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const raw = await res.text();
+        detail = JSON.parse(raw)?.error?.message || raw;
+      } catch {
+        detail = await res.text();
+      }
+      throw new Error(`DeepSeek planner error ${res.status}: ${detail}`);
+    }
+
+    const raw = await res.text();
+    const elapsed = Date.now() - startTime;
+    
+    if (process.env.DEBUG_AI === "1") {
+      console.log(`[PLANNER PING] Success, elapsed: ${elapsed}ms`);
+      console.log("[PLANNER PING RAW]", raw);
+    }
+    
+    // Parse the raw response to get the content
+    let content = "";
+    let reasoningContent = "";
+    try {
+      const responseJson = JSON.parse(raw);
+      content = responseJson?.choices?.[0]?.message?.content ?? "";
+      reasoningContent = responseJson?.choices?.[0]?.message?.reasoning_content ?? "";
+      
+      // For reasoning models, check reasoning_content if content is empty
+      if (!content && reasoningContent) {
+        content = reasoningContent;
+      }
+      
+      // Also try to extract JSON from reasoning_content even if content exists
+      if (reasoningContent) {
+        const reasoningJson = extractFirstJsonObject(reasoningContent);
+        if (reasoningJson && Object.keys(reasoningJson).length > 0) {
+          content = JSON.stringify(reasoningJson);
+        }
+      }
+    } catch {
+      content = "";
+    }
+    
+    // Extract JSON from content
+    let parsed = coerceJSON(content);
+    if (!parsed) {
+      try {
+        parsed = extractFirstJsonObject(content);
+      } catch {
+        parsed = null;
+      }
+    }
+    
+    if (process.env.DEBUG_AI === "1") {
+      console.log("[PLANNER PING PARSED]", parsed);
+    }
+    
+    return parsed;
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === "AbortError") {
+      if (process.env.DEBUG_AI === "1") {
+        console.log(`[PLANNER PING] AbortError(timeout), timeoutMs: ${PLANNER_TIMEOUT_MS}`);
+      }
+      throw new Error(`Planner ping timed out after ${PLANNER_TIMEOUT_MS}ms`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
 }

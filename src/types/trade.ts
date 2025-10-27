@@ -18,6 +18,19 @@ export type SuggestedPlan = {
   confidence?: number;
 };
 
+export type PartialPlan = {
+  meta?: {
+    instrument?: string | undefined;
+    timeframe?: string | undefined;
+    trend?: string | undefined;
+    session?: string | undefined;
+    vwapBias?: string | undefined;
+  };
+  clarifyingQuestions?: ClarifyingQuestion[];
+  suggested: SuggestedPlan[];
+  warnings?: string[];
+};
+
 export type TradePlan = {
   meta?: {
     instrument?: string;

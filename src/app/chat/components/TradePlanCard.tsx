@@ -2,7 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { TradePlan } from "@/types/trade";
+import type { TradePlan, Target } from "@/types/trade";
 
 export function TradePlanCard({ plan }: { plan: TradePlan }) {
   const s = plan?.suggested?.[0];
@@ -53,7 +53,7 @@ export function TradePlanCard({ plan }: { plan: TradePlan }) {
           <div className="rounded-xl border border-neutral-200 p-3">
             <div className="text-[12px] font-mono text-neutral-500">Targets</div>
             <div className="text-sm text-neutral-800">
-              {(s.targets ?? []).map((t, i) => `T${i + 1}: ${t.rr}R`).join(" · ")}
+              {(s.targets ?? []).map((t: Target, i: number) => `T${i + 1}: ${t.rr}R`).join(" · ")}
             </div>
           </div>
         </div>
@@ -63,13 +63,13 @@ export function TradePlanCard({ plan }: { plan: TradePlan }) {
           <div className="rounded-xl border border-neutral-200 p-3">
             <div className="text-[12px] font-mono text-neutral-500">Why</div>
             <ul className="mt-1 list-disc pl-5 text-sm text-neutral-800 space-y-1">
-              {(s.rationale ?? []).map((r, i) => <li key={i}>{r}</li>)}
+              {(s.rationale ?? []).map((r: string, i: number) => <li key={i}>{r}</li>)}
             </ul>
           </div>
           <div className="rounded-xl border border-neutral-200 p-3">
             <div className="text-[12px] font-mono text-neutral-500">Invalidations</div>
             <ul className="mt-1 list-disc pl-5 text-sm text-neutral-800 space-y-1">
-              {(s.invalidations ?? []).map((r, i) => <li key={i}>{r}</li>)}
+              {(s.invalidations ?? []).map((r: string, i: number) => <li key={i}>{r}</li>)}
             </ul>
           </div>
         </div>

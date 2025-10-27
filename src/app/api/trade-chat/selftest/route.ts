@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { callOpenRouterJSON } from "@/lib/openrouter";
+import { textify } from "@/lib/safe-json";
 import { rateLimit } from "@/lib/ratelimit";
 import { reqId } from "@/lib/reqid";
 
@@ -40,7 +41,7 @@ export async function GET(req: Request) {
         { role: "user", content: user }
       ]
     });
-    const cleaned = raw.replace(/```json|```/g, "").trim();
+    const cleaned = textify(raw).replace(/```json|```/g, "").trim();
     let json: any;
     try { json = JSON.parse(cleaned); } catch (e) {
       return NextResponse.json({ ok: false, error: "parse_failed", raw: raw.slice(0, 600), reqId: id }, { status: 502 });

@@ -24,7 +24,8 @@ export const tradePlanSchema = z.object({
     instrument: z.string().optional(),
     timeframe: z.string().optional(),
     confidence: z.number().min(0).max(1).optional(),
-  }),
+    // Add passthrough for unknown fields that might come from vision or planner
+  }).passthrough(),
   questions: z.array(z.object({
     id: z.string(),
     text: z.string(),

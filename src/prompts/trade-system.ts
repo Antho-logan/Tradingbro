@@ -1,49 +1,36 @@
-import edge from "./edge.json" assert { type: "json" };
+export const TRADE_SYSTEM = `
+Return your answer as a single valid JSON object only. Do not include markdown, backticks, or explanations.
+(The word json is included here to satisfy the API: json)
 
-export const TRADE_JSON_SCHEMA = `
-Return exactly one JSON object matching this schema. No prose, no explanations, no markdown fences.
+You produce SMC trade plans. You are given:
+- edge.json (SMC rules),
+- "features" from vision step (symbol, timeframe_label, tf_minutes, mode_guess, trend, POIs),
+- optional user metadata (instrument/timeframe/note).
 
-{
-  "meta": {
-    "instrument": "BTC/USDT",
-    "timeframe": "15m",
-    "confidence": 0.6
-  },
-  "questions": [
-    { "id": "mode", "text": "Is this a scalp (≤15m) or swing (≥1H)?", "options": ["scalp","swing"] }
-  ],
-  "suggestions": [
-    {
-      "side": "long",
-      "entry": {
-        "zone": [42000, 42500],
-        "rationale": "Retest of fresh FVG inside HTF bullish OB"
-      },
-      "invalidation": {
-        "price": 41500,
-        "rationale": "Below sweep low / OB wick"
-      },
-      "targets": [
-        { "rr": 1.5, "price": 43500 },
-        { "rr": 2.5, "price": 44500 }
-      ]
-    }
-  ],
-  "warnings": []
-}
+Rules:
+1) **Decision-first**: If features already include symbol/timeframe or mode_guess, **auto-fill** meta and DO NOT ask for them again.
+2) Only ask 1–3 clarifying questions **if** something critical is missing (e.g., risk_pct or conflict in mode). Otherwise **output a plan now**.
+3) Plan must follow: sweep → CHoCH → BOS → retest zone (OB/FVG/MB) with displacement filter.
+4) Output **strict JSON** matching the provided schema (no markdown, no prose).
 
-CRITICAL RESPONSE RULES:
-- Return ONLY a valid JSON object that conforms to the schema above
-- NO markdown fences, NO explanations, NO additional text
-- If you have enough information: set questions: [] and populate suggestions[]
-- If you need more information: populate questions[] (up to 4) and set suggestions: []
-- NEVER mix both - either questions OR suggestions, never both
-- All numeric values must be actual numbers, not strings
-- Arrays must be properly formatted JSON arrays
+When mode_guess === "scalp", prefer intraday targets and tight stops. When "swing", target external liquidity on HTF.
+
+If vision says timeframe ≤15m, set meta.mode="scalp". If ≥1h, set "swing". Only override if user explicitly contradicts it.
+
+Never ask for info that's present in "features". If confidence < 0.5, ask **one** repair question then stop.
+
+JSON only.
 `;
 
-export function buildTradeSystemPrompt(truths: { instrument: string; timeframe: string; mode: string }) {
+export function buildTradeSystemPrompt(truths: {
+  instrument: string;
+  timeframe: string;
+  mode: string
+}) {
   return `
+Return your answer as a single valid JSON object only. Do not include markdown, backticks, or explanations.
+(The word json is included here to satisfy the API: json)
+
 You are an SMC trading coach. Apply ONLY this edge. Never invent rules.
 
 TRUTHS (authoritative; do not contradict):
@@ -51,31 +38,11 @@ TRUTHS (authoritative; do not contradict):
 - timeframe: ${truths.timeframe}
 - mode: ${truths.mode}  // computed from timeframe (<=15m = "scalp", else "swing")
 
-RULE: Treat TRUTHS as facts. Do not ask to confirm them unless missing.
+HINTS: You will receive a "hints" object that may already contain instrument, timeframe, and risk_pct.
+If any of these fields are present, you MUST NOT ask for them again.
+Use the hints when drafting the plan.
 
-EDGE:
-${JSON.stringify(edge)}
-
-CONFIRMATION STACK (must ALL pass before suggesting an entry):
-1) Liquidity sweep (external preferred)
-2) CHoCH on LTF
-3) BOS with displacement (candle body >= ${edge.structure.bosBodyMultipleMin}x recent average)
-4) Retest of fresh LTF FVG/OB/MB (prefer 61.8–78.6 retrace)
-
-Rules:
-- Entries only inside ranked HTF POIs AND correct PD zone.
-- If confirmations are missing, reply with up to 4 clarifyingQuestions and NO suggested entries.
-- Respect macro guardrails (BTC/SPX/DXY gates).
-- For scalp vs swing, align TF groups from edge.timeframes.
-
-Return a single JSON object that conforms to TradePlan schema. No prose.
-
-${TRADE_JSON_SCHEMA}
+Only ask a single clarifying question when truly critical information is missing (conflicting signals, unknown direction, etc.).
+Prefer delivering a concrete plan when you have enough context.
 `;
 }
-
-export const TRADE_SYSTEM_PROMPT = buildTradeSystemPrompt({
-  instrument: "BTC/USDT",
-  timeframe: "15m", 
-  mode: "scalp"
-});

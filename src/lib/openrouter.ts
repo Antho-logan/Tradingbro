@@ -1,3 +1,62 @@
+import { ENV } from "@/lib/env";
+import { textify } from "@/lib/safe-json";
+
+const VISION_TIMEOUT_MS = ENV.VISION_TIMEOUT_MS;
+const PLANNER_TIMEOUT_MS = ENV.PLANNER_TIMEOUT_MS;
+
+export async function openRouterChat({
+  messages, model, kind = "planner", // "vision" | "planner"
+  responseFormat, temperature = 0.2, maxTokens = 1200,
+}: {
+  messages: any[];
+  model: string;
+  kind?: "vision" | "planner";
+  responseFormat?: { type: "json_object" } | undefined;
+  temperature?: number;
+  maxTokens?: number;
+}) {
+  const timeout = kind === "vision" ? VISION_TIMEOUT_MS : PLANNER_TIMEOUT_MS;
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeout);
+
+  try {
+    const base = process.env.OPENROUTER_BASE || "https://openrouter.ai/api/v1";
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new Error("Missing OPENROUTER_API_KEY");
+
+    const res = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.OPENROUTER_HTTP_REFERER ?? "http://localhost:3000",
+        "X-Title": process.env.OPENROUTER_X_TITLE ?? "TraderBro Dev",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        temperature,
+        max_tokens: maxTokens,
+        messages,
+        ...(responseFormat ? { response_format: responseFormat } : {}),
+      }),
+      signal: ac.signal,
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      const err = new Error(`OpenRouter error ${res.status} for ${model}: ${txt.slice(0,300)}`);
+      // Caller decides whether to fallback
+      (err as any).status = res.status;
+      (err as any).body = txt;
+      throw err;
+    }
+    return await res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export async function callOpenRouterJSON({
   model,
   messages,
@@ -50,7 +109,7 @@ export async function callOpenRouterJSON({
 
   console.log("[OR] model:", model);
   console.log("[OR] req.head:", JSON.stringify({ model, temperature, hasRF: !!body.response_format }, null, 2));
-  let res = await send(primaryKey, 1, 30000); // 30s timeout
+  let res = await send(primaryKey, 1, PLANNER_TIMEOUT_MS); // Use planner timeout
   // retry/backoff on transient statuses
   const transient = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
   let attempt = 1;
@@ -61,12 +120,12 @@ export async function callOpenRouterJSON({
       console.warn(`[OR] transient ${res.status}, retrying attempt ${attempt} in ${Math.round(delay)}ms`);
     }
     await sleep(delay);
-    res = await send(primaryKey, attempt, 30000);
+    res = await send(primaryKey, attempt, PLANNER_TIMEOUT_MS);
   }
   // Fallback to ALT key if auth/rate/blocked or still failing
   if (!res.ok && altKey && [401, 403, 429].includes(res.status)) {
     if (process.env.DEBUG_AI === "1") console.warn("[OR] switching to ALT key");
-    res = await send(altKey, 1, 30000);
+    res = await send(altKey, 1, PLANNER_TIMEOUT_MS);
   }
 
   if (!res.ok) {
@@ -84,7 +143,7 @@ export async function callOpenRouterJSON({
 // test-visible helper; keep behavior identical to your internal usage
 export function coerceJSON(s: string): any | null {
   try { return JSON.parse(s); } catch {}
-  const unfenced = s.replace(/```json|```/g, "").trim();
+  const unfenced = textify(s).replace(/```json|```/g, "").trim();
   try { return JSON.parse(unfenced); } catch {}
   const m = unfenced.match(/\{[\s\S]*\}$/);
   if (m) {

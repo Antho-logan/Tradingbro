@@ -4,28 +4,29 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useTradeAnalysis } from "@/app/chat/hooks/useTradeAnalysis";
-import { ClarifyingForm } from "@/app/chat/components/ClarifyingForm";
+import ClarifyingForm from "@/app/chat/components/ClarifyingForm";
 import { TradePlanCard } from "@/app/chat/components/TradePlanCard";
 import TerminalWindow from "@/components/terminal/Window";
 import UploadDropzone from "@/components/chat/UploadDropzone";
 import { Card } from "@/components/ui/card";
 import PreviousTrades from "@/components/trade/previous-trades";
+import ThinkingBar from "@/components/ui/ThinkingBar";
 
 export default function TradeChatPage() {
-  const { status, analyze, refine, plan, error, reset, questions, isAnalyzing, isRefining } = useTradeAnalysis();
+  const { status, analyze, refine, plan, error, reset, questions, getStatusInfo } = useTradeAnalysis();
 
   const [file, setFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [instrument, setInstrument] = useState("");
   const [timeframe, setTimeframe] = useState("");
-  const [note, setNote] = useState("");
+  const [riskPct, setRiskPct] = useState("1"); // Default 1%
 
   async function onAnalyze() {
     if (!file) {
       alert("Upload a chart image first.");
       return;
     }
-    await analyze(file, { instrument, timeframe, note });
+    await analyze(file, { instrument, timeframe, risk_pct: riskPct });
   }
 
   function handleImageSelected(url: string) {
@@ -39,9 +40,6 @@ export default function TradeChatPage() {
       });
   }
 
-  async function onSubmitAnswers(answers: Record<string, string>) {
-    await refine(answers);
-  }
 
   return (
     <main className="mx-auto max-w-7xl px-6 lg:px-8 py-8">
@@ -92,9 +90,13 @@ export default function TradeChatPage() {
                   />
                   <input
                     className="h-10 rounded border px-3"
-                    placeholder="Note (optional)"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Risk % (default 1%)"
+                    value={riskPct}
+                    onChange={(e) => setRiskPct(e.target.value)}
+                    type="number"
+                    min="0.1"
+                    max="10"
+                    step="0.1"
                   />
                 </div>
               </div>
@@ -111,9 +113,13 @@ export default function TradeChatPage() {
               {status === "refining" && <div>Refining plan…</div>}
 
               {/* Clarifying form */}
-              {status === "needsAnswers" && questions && questions.length > 0 && (
-                <ClarifyingForm questions={questions} onSubmit={onSubmitAnswers} />
-              )}
+              {status === "needsAnswers" || status === "refining" ? questions && questions.length > 0 && (
+                <ClarifyingForm
+                  questions={questions}
+                  busy={status === "refining" || status === "thinking" || status === "reasoning" || status === "analyzing"}
+                  onSubmit={(answers) => refine(answers)}
+                />
+              ) : null}
 
               {/* Trade plan result */}
               {status === "done" && plan && <TradePlanCard plan={plan} />}
@@ -155,6 +161,22 @@ export default function TradeChatPage() {
           </div>
         </section>
       </div>
-    </main>
-  );
+
+      {/* ThinkingBar for main chat screen */}
+      {status && (status === "analyzing" || status === "reasoning" || status === "refining") && (
+        <ThinkingBar
+          visible={true}
+            label={(() => {
+              const info = getStatusInfo();
+              if (info?.type === "reasoning") {
+                return info?.step || "Analyzing…";
+              } else if (info?.type === "thinking") {
+                return info?.label || "Thinking…";
+              }
+              return status === 'analyzing' ? "Analyzing chart…" : status === 'refining' ? "Refining plan…" : "Processing…";
+            })()}
+        />
+      )}
+  </main>
+);
 }

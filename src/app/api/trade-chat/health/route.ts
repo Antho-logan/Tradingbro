@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { callPlannerJSON } from "@/lib/deepseek";
-import { coerceJSON } from "@/lib/openrouter";
+import { pingPlanner } from "@/lib/deepseek";
+import { textify } from "@/lib/safe-json";
 import { reqId } from "@/lib/reqid";
 
 export async function GET() {
   const id = reqId();
-  const out: any = { ok: true, reqId: id, vision: {}, planner: {} };
+  const out: { ok: boolean; reqId: string; vision: { ok?: boolean; raw?: string; json?: { ping?: string } | null; error?: string }; planner: { ok?: boolean; raw?: string; json?: { ping?: string } | null; error?: string } } = { ok: true, reqId: id, vision: {}, planner: {} };
 
   // Vision probe (OpenRouter - text only for health check)
   try {
@@ -44,46 +44,32 @@ export async function GET() {
     const content = json?.choices?.[0]?.message?.content ?? "{}";
     out.vision.raw = content;
     try {
-      out.vision.json = JSON.parse(content.replace(/```json|```/g, ""));
+      const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+      out.vision.json = JSON.parse(textify(contentStr).replace(/```json|```/g, ""));
       out.vision.ok = out.vision.json?.ping === "vision_ok";
     } catch {
       out.vision.json = null;
       out.vision.ok = false;
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     out.ok = false;
-    out.vision.error = String(e?.message ?? e);
+    out.vision.error = String(e instanceof Error ? e.message : e);
     out.vision.ok = false;
   }
 
   // Planner probe (DeepSeek direct)
   try {
-    const content = await callPlannerJSON([{
-      role: "system", 
-      content: "Return a single JSON object only." 
-    }, {
-      role: "user", 
-      content: "Respond with {\"ping\":\"planner_ok\"} only." 
-    }], {
-      max_tokens: 100
-    });
-    out.planner.raw = content;
-    try {
-      // Handle both string and object responses
-      const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
-      out.planner.json = JSON.parse(contentStr.replace(/```json|```/g, ""));
-      out.planner.ok = out.planner.json?.ping === "planner_ok";
-    } catch {
-      out.planner.json = null;
-      out.planner.ok = false;
-    }
-  } catch (e: any) {
+    const content = await pingPlanner();
+    out.planner.raw = JSON.stringify(content);
+    out.planner.json = content;
+    out.planner.ok = content?.ping === "planner_ok";
+  } catch (e: unknown) {
     out.ok = false;
-    out.planner.error = String(e?.message ?? e);
+    out.planner.error = String(e instanceof Error ? e.message : e);
     out.planner.ok = false;
   }
   
-  out.ok = out.vision.ok && out.planner.ok;
+  out.ok = Boolean(out.vision.ok) && Boolean(out.planner.ok);
 
   return NextResponse.json(out);
 }
